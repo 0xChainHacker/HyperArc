@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { CreatePaymentIntentDto, GetPaymentDto } from './dto/gateway.dto';
+import { CirclePaymentIntent, CirclePayment } from './circle.types';
 
 @Injectable()
 export class CircleGatewayService {
@@ -14,8 +14,8 @@ export class CircleGatewayService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
   ) {
-    this.apiKey = this.configService.get<string>('CIRCLE_API_KEY');
-    this.baseUrl = this.configService.get<string>('CIRCLE_API_BASE_URL');
+    this.apiKey = this.configService.get<string>('circle.apiKey');
+    this.baseUrl = this.configService.get<string>('circle.apiBaseUrl');
   }
 
   private getHeaders() {
@@ -28,23 +28,34 @@ export class CircleGatewayService {
   /**
    * Create a payment intent for on-ramp
    */
-  async createPaymentIntent(dto: CreatePaymentIntentDto) {
+  async createPaymentIntent(
+    userId: string,
+    amount: string,
+    currency: string,
+    chain: string,
+  ): Promise<CirclePaymentIntent> {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
           `${this.baseUrl}/v1/paymentIntents`,
           {
-            idempotencyKey: dto.idempotencyKey,
-            amount: dto.amount,
-            settlementCurrency: dto.settlementCurrency,
-            paymentMethods: dto.paymentMethods,
-            metadata: dto.metadata || {},
+            idempotencyKey: `payment-${userId}-${Date.now()}`,
+            amount: {
+              amount,
+              currency,
+            },
+            settlementCurrency: currency,
+            paymentMethods: [{
+              type: 'blockchain',
+              chain,
+            }],
+            metadata: { userId },
           },
           { headers: this.getHeaders() },
         ),
       );
       this.logger.log(`Payment intent created: ${response.data.data.id}`);
-      return response.data;
+      return response.data.data;
     } catch (error) {
       this.logger.error('Failed to create payment intent', error.response?.data || error.message);
       throw error;
@@ -54,7 +65,7 @@ export class CircleGatewayService {
   /**
    * Get payment intent details
    */
-  async getPaymentIntent(paymentIntentId: string) {
+  async getPaymentIntent(paymentIntentId: string): Promise<CirclePaymentIntent> {
     try {
       const response = await firstValueFrom(
         this.httpService.get(
@@ -62,7 +73,7 @@ export class CircleGatewayService {
           { headers: this.getHeaders() },
         ),
       );
-      return response.data;
+      return response.data.data;
     } catch (error) {
       this.logger.error(`Failed to get payment intent ${paymentIntentId}`, error.response?.data || error.message);
       throw error;
@@ -70,49 +81,25 @@ export class CircleGatewayService {
   }
 
   /**
-   * List all payment intents
-   */
-  async listPaymentIntents(pageSize = 10, pageAfter?: string) {
-    try {
-      const params: any = { pageSize };
-      if (pageAfter) params.pageAfter = pageAfter;
-
-      const response = await firstValueFrom(
-        this.httpService.get(
-          `${this.baseUrl}/v1/paymentIntents`,
-          { 
-            headers: this.getHeaders(),
-            params,
-          },
-        ),
-      );
-      return response.data;
-    } catch (error) {
-      this.logger.error('Failed to list payment intents', error.response?.data || error.message);
-      throw error;
-    }
-  }
-
-  /**
    * Get payment by ID
    */
-  async getPayment(dto: GetPaymentDto) {
+  async getPayment(paymentId: string): Promise<CirclePayment> {
     try {
       const response = await firstValueFrom(
         this.httpService.get(
-          `${this.baseUrl}/v1/payments/${dto.id}`,
+          `${this.baseUrl}/v1/payments/${paymentId}`,
           { headers: this.getHeaders() },
         ),
       );
-      return response.data;
+      return response.data.data;
     } catch (error) {
-      this.logger.error(`Failed to get payment ${dto.id}`, error.response?.data || error.message);
+      this.logger.error(`Failed to get payment ${paymentId}`, error.response?.data || error.message);
       throw error;
     }
   }
 
   /**
-   * List all payments
+   * List payments for a user
    */
   async listPayments(pageSize = 10, pageAfter?: string) {
     try {
@@ -128,27 +115,9 @@ export class CircleGatewayService {
           },
         ),
       );
-      return response.data;
+      return response.data.data;
     } catch (error) {
       this.logger.error('Failed to list payments', error.response?.data || error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get supported payment methods
-   */
-  async getPaymentMethods() {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get(
-          `${this.baseUrl}/v1/paymentMethods`,
-          { headers: this.getHeaders() },
-        ),
-      );
-      return response.data;
-    } catch (error) {
-      this.logger.error('Failed to get payment methods', error.response?.data || error.message);
       throw error;
     }
   }

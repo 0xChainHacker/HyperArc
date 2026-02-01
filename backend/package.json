@@ -23,6 +23,7 @@
     "@nestjs/core": "^11.1.12",
     "@nestjs/platform-express": "^11.1.12",
     "axios": "^1.13.4",
+    "ethers": "^6.16.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
