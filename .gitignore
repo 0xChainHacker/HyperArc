@@ -139,7 +139,10 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Foundry / Solidity
-contract/cache/
-contract/out/
-contract/broadcast/
-contract/lib/
+cache/
+out/
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+lib/
+.env
