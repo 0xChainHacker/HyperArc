@@ -1,72 +1,108 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-/**
- * @title EconomicInterestLedger
- * @notice Primary issuance and ledger for economic interests
- */
+/// @notice Ledger-based (non-transferable) economic interests for primary issuance.
 contract EconomicInterestLedger is Ownable {
-    IERC20 public usdc;
-    
+    using SafeERC20 for IERC20;
+
     struct Product {
-        uint256 id;
-        string name;
-        uint256 pricePerUnit;
-        uint256 totalSupply;
-        bool active;
+        address issuer;        // issuer / SPV address (who can declare dividends)
+        bool active;           // can subscribe when active
+        uint256 priceE6;       // price per 1 unit in USDC (6 decimals). e.g. 10 USDC => 10_000_000
+        string metadataURI;    // optional off-chain metadata
     }
-    
+
+    IERC20 public immutable usdc; // USDC token on Arc
+    uint256 public productCount;
+
+    // productId => Product
     mapping(uint256 => Product) public products;
-    mapping(uint256 => mapping(address => uint256)) public holdings;
-    mapping(uint256 => uint256) public totalHoldings;
-    
-    uint256 public nextProductId;
-    
-    event ProductCreated(uint256 indexed productId, string name, uint256 pricePerUnit);
-    event Subscribed(uint256 indexed productId, address indexed investor, uint256 amount, uint256 usdcPaid);
-    
-    constructor(address _usdc) Ownable(msg.sender) {
-        usdc = IERC20(_usdc);
-        nextProductId = 1;
+
+    // productId => investor => units (interest units, integer)
+    mapping(uint256 => mapping(address => uint256)) private _holdings;
+
+    // productId => total units
+    mapping(uint256 => uint256) private _totalUnits;
+
+    event ProductCreated(uint256 indexed productId, address indexed issuer, uint256 priceE6, string metadataURI);
+    event ProductStatusUpdated(uint256 indexed productId, bool active, uint256 priceE6);
+    event Subscribed(uint256 indexed productId, address indexed investor, uint256 usdcPaidE6, uint256 unitsMinted);
+
+    constructor(address usdc_, address owner_) Ownable(owner_) {
+        require(usdc_ != address(0), "USDC=0");
+        usdc = IERC20(usdc_);
     }
-    
-    function createProduct(
-        string memory name,
-        uint256 pricePerUnit,
-        uint256 totalSupply
-    ) external onlyOwner returns (uint256) {
-        uint256 productId = nextProductId++;
-        
+
+    /// @notice Create a new economic interest product.
+    /// @param issuer The issuer/SPV address responsible for distributions.
+    /// @param priceE6 USDC(6 decimals) per unit. Must be > 0.
+    /// @param metadataURI Optional product metadata (ipfs/https).
+    function createProduct(address issuer, uint256 priceE6, string calldata metadataURI) external onlyOwner returns (uint256 productId) {
+        require(issuer != address(0), "issuer=0");
+        require(priceE6 > 0, "price=0");
+
+        productId = ++productCount;
         products[productId] = Product({
-            id: productId,
-            name: name,
-            pricePerUnit: pricePerUnit,
-            totalSupply: totalSupply,
-            active: true
+            issuer: issuer,
+            active: true,
+            priceE6: priceE6,
+            metadataURI: metadataURI
         });
-        
-        emit ProductCreated(productId, name, pricePerUnit);
-        return productId;
+
+        emit ProductCreated(productId, issuer, priceE6, metadataURI);
     }
-    
-    function subscribe(uint256 productId, uint256 amount) external {
-        Product storage product = products[productId];
-        require(product.active, "Product not active");
-        require(totalHoldings[productId] + amount <= product.totalSupply, "Exceeds supply");
-        
-        uint256 usdcAmount = amount * product.pricePerUnit;
-        require(usdc.transferFrom(msg.sender, address(this), usdcAmount), "USDC transfer failed");
-        
-        holdings[productId][msg.sender] += amount;
-        totalHoldings[productId] += amount;
-        
-        emit Subscribed(productId, msg.sender, amount, usdcAmount);
+
+    /// @notice Enable/disable product & update price.
+    function setProduct(uint256 productId, bool active, uint256 priceE6) external {
+        Product storage p = products[productId];
+        require(p.issuer != address(0), "no product");
+
+        // Only owner or issuer can update (MVP convenience)
+        require(msg.sender == owner() || msg.sender == p.issuer, "not authorized");
+        require(priceE6 > 0, "price=0");
+
+        p.active = active;
+        p.priceE6 = priceE6;
+
+        emit ProductStatusUpdated(productId, active, priceE6);
     }
-    
-    function getHolding(uint256 productId, address investor) external view returns (uint256) {
-        return holdings[productId][investor];
+
+    /// @notice Subscribe economic interests by paying USDC.
+    /// @dev units = usdcAmount / pricePerUnit. Remainder stays with contract (or refund if you want).
+    function subscribe(uint256 productId, uint256 usdcAmountE6) external returns (uint256 units) {
+        Product memory p = products[productId];
+        require(p.issuer != address(0), "no product");
+        require(p.active, "inactive");
+        require(usdcAmountE6 > 0, "amount=0");
+
+        units = usdcAmountE6 / p.priceE6;
+        require(units > 0, "too small");
+
+        // pull USDC from investor
+        usdc.safeTransferFrom(msg.sender, address(this), units * p.priceE6);
+
+        _holdings[productId][msg.sender] += units;
+        _totalUnits[productId] += units;
+
+        emit Subscribed(productId, msg.sender, units * p.priceE6, units);
+    }
+
+    // ========= Read API =========
+
+    function holdingOf(uint256 productId, address investor) external view returns (uint256) {
+        return _holdings[productId][investor];
+    }
+
+    function totalUnits(uint256 productId) external view returns (uint256) {
+        return _totalUnits[productId];
+    }
+
+    /// @notice Where subscription USDC sits (MVP). In production, you'd define treasury logic.
+    function treasuryBalanceE6() external view returns (uint256) {
+        return usdc.balanceOf(address(this));
     }
 }
