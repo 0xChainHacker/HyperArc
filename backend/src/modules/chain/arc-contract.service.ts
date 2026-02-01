@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
-import * as LedgerABI from './abi/EconomicInterestLedger.json';
-import * as DistributorABI from './abi/DividendDistributor.json';
-import * as USDCABI from './abi/USDC.json';
+import LedgerABI from './abi/EconomicInterestLedger.json';
+import DistributorABI from './abi/DividendDistributor.json';
+import USDCABI from './abi/USDC.json';
 
 @Injectable()
 export class ArcContractService {
@@ -20,9 +20,9 @@ export class ArcContractService {
     const usdcAddress = this.configService.get<string>('arc.usdcAddress');
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    this.ledgerContract = new ethers.Contract(ledgerAddress, LedgerABI, this.provider);
-    this.distributorContract = new ethers.Contract(distributorAddress, DistributorABI, this.provider);
-    this.usdcContract = new ethers.Contract(usdcAddress, USDCABI, this.provider);
+    this.ledgerContract = new ethers.Contract(ledgerAddress, LedgerABI as any, this.provider);
+    this.distributorContract = new ethers.Contract(distributorAddress, DistributorABI as any, this.provider);
+    this.usdcContract = new ethers.Contract(usdcAddress, USDCABI as any, this.provider);
   }
 
   /**
