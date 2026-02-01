@@ -1,0 +1,52 @@
+[
+  {
+    "inputs": [
+      { "internalType": "address", "name": "issuer", "type": "address" },
+      { "internalType": "uint256", "name": "priceE6", "type": "uint256" },
+      { "internalType": "string", "name": "metadataURI", "type": "string" }
+    ],
+    "name": "createProduct",
+    "outputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "internalType": "uint256", "name": "amountE6", "type": "uint256" }
+    ],
+    "name": "subscribe",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "internalType": "address", "name": "investor", "type": "address" }
+    ],
+    "name": "holdingOf",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
+    "name": "totalUnits",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
+    "name": "products",
+    "outputs": [
+      { "internalType": "address", "name": "issuer", "type": "address" },
+      { "internalType": "bool", "name": "active", "type": "bool" },
+      { "internalType": "uint256", "name": "priceE6", "type": "uint256" },
+      { "internalType": "string", "name": "metadataURI", "type": "string" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]
