@@ -42,6 +42,7 @@ export class UsersService {
     };
 
     this.userWallets.set(userId, userWallet);
+    this.logger.log(`Wallet created successfully for user ${userId}, walletId: ${wallet.id}`);
     return userWallet;
   }
 

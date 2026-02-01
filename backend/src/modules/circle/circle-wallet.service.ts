@@ -29,6 +29,7 @@ export class CircleWalletService {
    * Create a wallet for a user
    */
   async createWallet(userId: string, blockchains: string[] = ['ARB-SEPOLIA']): Promise<CircleWallet> {
+    this.logger.log(`Creating wallet for user: ${userId}, blockchains: ${blockchains.join(', ')}`);
     try {
       const response = await firstValueFrom(
         this.httpService.post(
@@ -54,6 +55,7 @@ export class CircleWalletService {
    * Get wallet by ID
    */
   async getWallet(walletId: string): Promise<CircleWallet> {
+    this.logger.log(`Getting wallet: ${walletId}`);
     try {
       const response = await firstValueFrom(
         this.httpService.get(
@@ -72,6 +74,7 @@ export class CircleWalletService {
    * Get wallet balance
    */
   async getWalletBalance(walletId: string) {
+    this.logger.log(`Getting balance for wallet: ${walletId}`);
     try {
       const response = await firstValueFrom(
         this.httpService.get(
@@ -96,6 +99,7 @@ export class CircleWalletService {
     amount: string,
     tokenAddress?: string,
   ): Promise<CircleTransaction> {
+    this.logger.log(`Creating transaction: ${amount} from ${walletId} to ${destinationAddress} on ${blockchain}`);
     try {
       const response = await firstValueFrom(
         this.httpService.post(
@@ -121,6 +125,7 @@ export class CircleWalletService {
    * Get transaction status
    */
   async getTransaction(transactionId: string): Promise<CircleTransaction> {
+    this.logger.log(`Getting transaction status: ${transactionId}`);
     try {
       const response = await firstValueFrom(
         this.httpService.get(

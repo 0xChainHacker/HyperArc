@@ -26,7 +26,7 @@ export class ProductsService {
    * Create a new economic interest product
    */
   async createProduct(dto: CreateProductDto): Promise<Product> {
-    this.logger.log(`Creating product: ${dto.name}`);
+    this.logger.log(`Creating product: ${dto.name}, issuer: ${dto.issuerAddress}, price: ${dto.priceE6}`);
 
     // In production, this would call the ledger contract via a signer
     // For now, we simulate the product creation
@@ -60,6 +60,7 @@ export class ProductsService {
    * Get product by ID
    */
   async getProduct(productId: number): Promise<Product> {
+    this.logger.log(`Fetching product: ${productId}`);
     const product = this.products.get(productId);
     if (!product) {
       throw new BadRequestException(`Product ${productId} not found`);

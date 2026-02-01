@@ -29,6 +29,7 @@ export class ArcContractService {
    * Get product details from ledger contract
    */
   async getProduct(productId: number) {
+    this.logger.log(`Fetching product ${productId} from ledger contract`);
     try {
       const product = await this.ledgerContract.products(productId);
       return {
@@ -47,6 +48,7 @@ export class ArcContractService {
    * Get user's holding for a product
    */
   async getHolding(productId: number, investorAddress: string): Promise<string> {
+    this.logger.log(`Fetching holding for product ${productId}, investor: ${investorAddress}`);
     try {
       const holding = await this.ledgerContract.holdingOf(productId, investorAddress);
       return holding.toString();
@@ -86,6 +88,7 @@ export class ArcContractService {
    * Get USDC balance
    */
   async getUSDCBalance(address: string): Promise<string> {
+    this.logger.log(`Fetching USDC balance for: ${address}`);
     try {
       const balance = await this.usdcContract.balanceOf(address);
       return balance.toString();

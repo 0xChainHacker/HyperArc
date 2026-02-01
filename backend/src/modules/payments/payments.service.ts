@@ -69,8 +69,9 @@ export class PaymentsService {
     this.gatewayTransactions.set(txId, gatewayTx);
 
     this.logger.log(`Gateway transaction created: ${txId}`);
-    this.logger.log(`Payment intent: ${paymentIntent.id}`);
-    this.logger.log(`Waiting for deposit confirmation...`);
+    this.logger.log(`Payment intent created: ${paymentIntent.id}`);
+    this.logger.log(`Arc destination address: ${arcAddress}`);
+    this.logger.log(`Waiting for deposit confirmation from ${dto.sourceChain}...`);
 
     // In production:
     // - Poll payment intent status
@@ -112,7 +113,9 @@ export class PaymentsService {
 
     // Check USDC balance
     const balance = await this.arcContractService.getUSDCBalance(arcAddress);
+    this.logger.log(`User USDC balance: ${balance}, required: ${dto.amountE6}`);
     if (BigInt(balance) < BigInt(dto.amountE6)) {
+      this.logger.error(`Insufficient USDC balance for user ${dto.userId}`);
       throw new BadRequestException('Insufficient USDC balance');
     }
 
@@ -123,7 +126,7 @@ export class PaymentsService {
     // 4. Wait for subscribe confirmation
     // 5. Return transaction details
 
-    this.logger.log(`Subscription initiated for product ${dto.productId}`);
+    this.logger.log(`Subscription successfully initiated for product ${dto.productId}, user: ${dto.userId}, amount: ${dto.amountE6}`);
     
     return {
       success: true,
@@ -169,14 +172,18 @@ export class PaymentsService {
 
     // Check pending dividend
     const pending = await this.arcContractService.getPendingDividend(productId, arcAddress);
+    this.logger.log(`Pending dividend for user ${userId}, product ${productId}: ${pending}`);
 
     if (pending === '0') {
+      this.logger.warn(`No pending dividend to claim for user ${userId}, product ${productId}`);
       throw new BadRequestException('No pending dividend to claim');
     }
 
     // In production:
     // 1. Create claim transaction
     // 2. Wait for confirmation
+
+    this.logger.log(`Dividend claim successful for user ${userId}, product ${productId}, amount: ${pending}`);
 
     return {
       success: true,

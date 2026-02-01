@@ -34,6 +34,7 @@ export class CircleGatewayService {
     currency: string,
     chain: string,
   ): Promise<CirclePaymentIntent> {
+    this.logger.log(`Creating payment intent for user: ${userId}, amount: ${amount} ${currency}, chain: ${chain}`);
     try {
       const response = await firstValueFrom(
         this.httpService.post(
@@ -66,6 +67,7 @@ export class CircleGatewayService {
    * Get payment intent details
    */
   async getPaymentIntent(paymentIntentId: string): Promise<CirclePaymentIntent> {
+    this.logger.log(`Getting payment intent: ${paymentIntentId}`);
     try {
       const response = await firstValueFrom(
         this.httpService.get(
