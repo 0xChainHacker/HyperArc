@@ -38,8 +38,8 @@ export class ProductsService {
     }
 
     try {
-      // 1. Get or create Issuer role wallet
-      const issuerWallet = await this.usersService.getOrCreateWallet(
+      // 1. Get existing Issuer wallet
+      const issuerWallet = await this.usersService.getUserWallet(
         issuerUserId,
         WalletRole.ISSUER
       );
@@ -48,10 +48,14 @@ export class ProductsService {
         `Using issuer wallet: ${issuerWallet.walletId}, address: ${issuerWallet.address}`
       );
 
-      // 2. Verify issuerAddress matches wallet address (security check)
+      // 2. Verify issuerAddress matches wallet address
       if (dto.issuerAddress.toLowerCase() !== issuerWallet.address.toLowerCase()) {
+        this.logger.warn(
+          `Issuer address mismatch for user ${issuerUserId}. ` +
+          `Expected: ${issuerWallet.address}, Provided: ${dto.issuerAddress}`
+        );
         throw new BadRequestException(
-          `Issuer address mismatch. Expected ${issuerWallet.address}, got ${dto.issuerAddress}`
+          'Issuer address does not match your wallet address'
         );
       }
 
