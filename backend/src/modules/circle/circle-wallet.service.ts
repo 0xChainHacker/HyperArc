@@ -16,7 +16,7 @@ export class CircleWalletService {
     this.apiKey = this.configService.get<string>('circle.apiKey');
     this.entitySecret = this.configService.get<string>('circle.entitySecret');
     
-    // 初始化 Circle Developer SDK
+    // Initialize Circle Developer SDK
     this.circleDeveloperSdk = initiateDeveloperControlledWalletsClient({
       apiKey: this.apiKey,
       entitySecret: this.entitySecret,
@@ -29,14 +29,14 @@ export class CircleWalletService {
   async createWallet(userId: string, blockchains: string[] = ['ARB-SEPOLIA']): Promise<CircleWallet> {
     this.logger.log(`Creating wallet for user: ${userId}, blockchains: ${blockchains.join(', ')}`);
     try {
-      // 先创建 WalletSet
+      // First, create a WalletSet
       const walletSetResponse = await this.circleDeveloperSdk.createWalletSet({
         name: `User ${userId} WalletSet`,
       });
       
       this.logger.log(`WalletSet created: ${walletSetResponse.data?.walletSet?.id}`);
       
-      // 使用 WalletSet 创建钱包
+      // Create wallet in the WalletSet
       const walletResponse = await this.circleDeveloperSdk.createWallets({
         accountType: 'SCA',
         blockchains: blockchains as Blockchain[],
