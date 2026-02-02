@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ArcContractService } from '../chain/arc-contract.service';
+import { UsersService, WalletRole } from '../users/users.service';
 import { CreateProductDto } from './dto/product.dto';
 
 export interface Product {
@@ -16,26 +17,47 @@ export interface Product {
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
 
-  constructor(private readonly arcContractService: ArcContractService) {}
+  constructor(
+    private readonly arcContractService: ArcContractService,
+    private readonly usersService: UsersService,
+  ) {}
 
   /**
    * Create a new economic interest product on-chain
+   * Uses the issuer's own wallet to create and sign the transaction
    * @param dto - Product creation data
-   * @param walletId - Circle wallet ID to use for signing the transaction
+   * @param issuerUserId - User ID of the issuer (SPV/product creator)
    */
-  async createProduct(dto: CreateProductDto, walletId?: string): Promise<Product> {
+  async createProduct(dto: CreateProductDto, issuerUserId?: string): Promise<Product> {
     this.logger.log(`Creating product on-chain: ${dto.name}, issuer: ${dto.issuerAddress}, price: ${dto.priceE6}`);
     
-    if (!walletId) {
+    if (!issuerUserId) {
       throw new BadRequestException(
-        'walletId is required to create product on-chain. Please provide a Circle wallet ID with signing capability.'
+        'issuerUserId is required. Only the issuer can create products using their own wallet.'
       );
     }
 
     try {
-      // Create product on-chain
+      // 1. Get or create Issuer role wallet
+      const issuerWallet = await this.usersService.getOrCreateWallet(
+        issuerUserId,
+        WalletRole.ISSUER
+      );
+
+      this.logger.log(
+        `Using issuer wallet: ${issuerWallet.walletId}, address: ${issuerWallet.address}`
+      );
+
+      // 2. Verify issuerAddress matches wallet address (security check)
+      if (dto.issuerAddress.toLowerCase() !== issuerWallet.address.toLowerCase()) {
+        throw new BadRequestException(
+          `Issuer address mismatch. Expected ${issuerWallet.address}, got ${dto.issuerAddress}`
+        );
+      }
+
+      // 3. Create product on-chain
       const result = await this.arcContractService.createProduct(
-        walletId,
+        issuerWallet.walletId,
         dto.issuerAddress,
         dto.priceE6,
         dto.metadataURI || '',
@@ -43,7 +65,7 @@ export class ProductsService {
 
       this.logger.log(`Product created successfully. TxId: ${result.txId}, ProductId: ${result.productId}`);
 
-      // Fetch the created product from blockchain
+      // 4. Fetch the created product from blockchain
       if (result.productId) {
         return await this.getProduct(result.productId);
       }

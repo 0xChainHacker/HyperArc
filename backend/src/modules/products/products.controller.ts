@@ -6,12 +6,17 @@ import { CreateProductDto } from './dto/product.dto';
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
+  /**
+   * Create a new product
+   * Requires issuerUserId - the user ID of the SPV/issuer creating the product
+   * The issuer's own wallet will be used to sign the transaction
+   */
   @Post()
   async createProduct(
     @Body() dto: CreateProductDto,
-    @Query('walletId') walletId?: string,
+    @Query('issuerUserId') issuerUserId?: string,
   ) {
-    return this.productsService.createProduct(dto, walletId);
+    return this.productsService.createProduct(dto, issuerUserId);
   }
 
   @Get()

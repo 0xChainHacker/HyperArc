@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { CircleWalletService } from '../circle/circle-wallet.service';
 import { CircleGatewayService } from '../circle/circle-gateway.service';
 import { ArcContractService } from '../chain/arc-contract.service';
-import { UsersService } from '../users/users.service';
+import { UsersService, WalletRole } from '../users/users.service';
 import { FundArcDto, SubscribeDto } from './dto/payment.dto';
 
 export interface GatewayTransaction {
@@ -38,9 +38,12 @@ export class PaymentsService {
   async fundArc(dto: FundArcDto): Promise<GatewayTransaction> {
     this.logger.log(`Funding Arc for user ${dto.userId} from ${dto.sourceChain}`);
 
-    // Get or create user wallet
-    const userWallet = await this.usersService.getOrCreateWallet(dto.userId);
-    const arcAddress = userWallet.addresses['ARB-SEPOLIA'];
+    // Get or create investor wallet (investors receive funds)
+    const userWallet = await this.usersService.getOrCreateWallet(
+      dto.userId,
+      WalletRole.INVESTOR
+    );
+    const arcAddress = userWallet.address;
 
     if (!arcAddress) {
       throw new BadRequestException('User does not have an Arc address');
@@ -103,9 +106,12 @@ export class PaymentsService {
   async subscribe(dto: SubscribeDto) {
     this.logger.log(`User ${dto.userId} subscribing to product ${dto.productId}`);
 
-    // Get user wallet
-    const userWallet = await this.usersService.getUserWallet(dto.userId);
-    const arcAddress = userWallet.addresses['ARB-SEPOLIA'];
+    // Get or create investor wallet (investors subscribe to products)
+    const userWallet = await this.usersService.getOrCreateWallet(
+      dto.userId,
+      WalletRole.INVESTOR
+    );
+    const arcAddress = userWallet.address;
 
     if (!arcAddress) {
       throw new BadRequestException('User does not have an Arc address');
@@ -166,9 +172,12 @@ export class PaymentsService {
   async claimDividend(userId: string, productId: number) {
     this.logger.log(`User ${userId} claiming dividend from product ${productId}`);
 
-    // Get user wallet
-    const userWallet = await this.usersService.getUserWallet(userId);
-    const arcAddress = userWallet.addresses['ARB-SEPOLIA'];
+    // Get investor wallet (investors claim dividends)
+    const userWallet = await this.usersService.getOrCreateWallet(
+      userId,
+      WalletRole.INVESTOR
+    );
+    const arcAddress = userWallet.address;
 
     // Check pending dividend
     const pending = await this.arcContractService.getPendingDividend(productId, arcAddress);

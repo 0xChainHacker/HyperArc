@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ArcContractService } from '../chain/arc-contract.service';
 import { ProductsService } from '../products/products.service';
-import { UsersService } from '../users/users.service';
+import { UsersService, WalletRole } from '../users/users.service';
 
 export interface PortfolioHolding {
   productId: number;
@@ -34,9 +34,12 @@ export class PortfolioService {
   async getPortfolio(userId: string): Promise<Portfolio> {
     this.logger.log(`Fetching portfolio for user ${userId}`);
 
-    // Get user wallet
-    const userWallet = await this.usersService.getUserWallet(userId);
-    const arcAddress = userWallet.addresses['ARB-SEPOLIA'];
+    // Get investor wallet (portfolio is for investors)
+    const userWallet = await this.usersService.getOrCreateWallet(
+      userId,
+      WalletRole.INVESTOR
+    );
+    const arcAddress = userWallet.address;
 
     if (!arcAddress) {
       return {
@@ -95,8 +98,11 @@ export class PortfolioService {
    * Get user holdings for a specific product
    */
   async getProductHolding(userId: string, productId: number) {
-    const userWallet = await this.usersService.getUserWallet(userId);
-    const arcAddress = userWallet.addresses['ARB-SEPOLIA'];
+    const userWallet = await this.usersService.getOrCreateWallet(
+      userId,
+      WalletRole.INVESTOR
+    );
+    const arcAddress = userWallet.address;
 
     const units = await this.arcContractService.getHolding(productId, arcAddress);
     const pendingDividend = await this.arcContractService.getPendingDividend(productId, arcAddress);

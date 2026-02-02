@@ -1,18 +1,28 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit, BadRequestException } from '@nestjs/common';
 import { CircleWalletService } from '../circle/circle-wallet.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
+export enum WalletRole {
+  ISSUER = 'issuer',      // SPV issuer wallet (create products, declare dividends)
+  INVESTOR = 'investor',   // Investor wallet (subscribe to products, claim dividends)
+  ADMIN = 'admin',        // Platform admin wallet
+}
+
 export interface UserWallet {
   userId: string;
   walletId: string;
-  addresses: Record<string, string>; // blockchain -> address
+  role: WalletRole;                           // Wallet role
+  blockchain: string;                         // Blockchain network
+  address: string;                            // Wallet address
+  state: 'LIVE' | 'FROZEN';                  // Wallet state
   createdAt: string;
 }
 
 @Injectable()
 export class UsersService implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);
+  // Use composite key: userId-role as Map key
   private readonly userWallets = new Map<string, UserWallet>();
   private readonly storageFile = path.join(process.cwd(), 'data', 'user-wallets.json');
 
@@ -20,6 +30,13 @@ export class UsersService implements OnModuleInit {
 
   onModuleInit() {
     this.loadWalletsFromFile();
+  }
+
+  /**
+   * Generate composite key for Map
+   */
+  private getMapKey(userId: string, role: WalletRole): string {
+    return `${userId}:${role}`;
   }
 
   /**
@@ -31,7 +48,8 @@ export class UsersService implements OnModuleInit {
         const data = fs.readFileSync(this.storageFile, 'utf-8');
         const wallets: UserWallet[] = JSON.parse(data);
         wallets.forEach(wallet => {
-          this.userWallets.set(wallet.userId, wallet);
+          const key = this.getMapKey(wallet.userId, wallet.role);
+          this.userWallets.set(key, wallet);
         });
         this.logger.log(`Loaded ${wallets.length} wallets from storage`);
       } else {
@@ -61,55 +79,134 @@ export class UsersService implements OnModuleInit {
   }
 
   /**
-   * Get or create wallet for user
+   * Get or create wallet for user with specific role (lazy loading)
+   * This is the main method: automatically creates wallet when first needed
+   * 
+   * @param userId - User ID
+   * @param role - Wallet role (issuer/investor/admin)
+   * @param blockchain - Blockchain network (default: ARB-SEPOLIA)
    */
-  async getOrCreateWallet(userId: string) {
-    // Check if user already has a wallet
-    let userWallet = this.userWallets.get(userId);
+  async getOrCreateWallet(
+    userId: string, 
+    role: WalletRole = WalletRole.INVESTOR,
+    blockchain: string = 'ARB-SEPOLIA'
+  ): Promise<UserWallet> {
+    const key = this.getMapKey(userId, role);
+    
+    // Check if user already has a wallet with this role
+    let userWallet = this.userWallets.get(key);
     
     if (userWallet) {
-      this.logger.log(`Found existing wallet for user ${userId}`);
+      this.logger.log(`Found existing ${role} wallet for user ${userId}`);
       return userWallet;
     }
 
     // Create new wallet
-    this.logger.log(`Creating new wallet for user ${userId}`);
-    const wallet = await this.circleWalletService.createWallet(userId, ['ARB-SEPOLIA']);
+    this.logger.log(`Creating new ${role} wallet for user ${userId} on ${blockchain}`);
+    const wallet = await this.circleWalletService.createWallet(
+      `${userId}-${role}`,  // Wallet name includes role
+      [blockchain]
+    );
     
     userWallet = {
       userId,
       walletId: wallet.id,
-      addresses: {
-        'ARB-SEPOLIA': wallet.address || '',
-      },
+      role,
+      blockchain,
+      address: wallet.address || '',
+      state: wallet.state,
       createdAt: new Date().toISOString(),
     };
 
-    this.userWallets.set(userId, userWallet);
+    this.userWallets.set(key, userWallet);
     this.saveWalletsToFile();
     
-    this.logger.log(`Wallet created successfully for user ${userId}, walletId: ${wallet.id}`);
+    this.logger.log(
+      `${role} wallet created successfully for user ${userId}. ` +
+      `WalletId: ${wallet.id}, Address: ${wallet.address}`
+    );
+    
     return userWallet;
   }
 
   /**
-   * Get user wallet info
+   * Get user wallet by role (will not auto-create, must be created manually)
+   * Throws exception if not found
+   * 
+   * @param userId - User ID
+   * @param role - Wallet role
    */
-  async getUserWallet(userId: string) {
-    const userWallet = this.userWallets.get(userId);
+  async getUserWallet(userId: string, role: WalletRole): Promise<UserWallet> {
+    const key = this.getMapKey(userId, role);
+    const userWallet = this.userWallets.get(key);
+    
     if (!userWallet) {
       throw new NotFoundException(
-        `Wallet not found for user ${userId}. Please create a wallet first by calling POST /wallets/${userId}`
+        `${role} wallet not found for user ${userId}. ` +
+        `Please create a wallet first by calling POST /wallets/${userId}?role=${role}`
       );
     }
+    
     return userWallet;
+  }
+
+  /**
+   * Get all wallets for a user
+   */
+  async getUserWallets(userId: string): Promise<UserWallet[]> {
+    const wallets: UserWallet[] = [];
+    
+    for (const wallet of this.userWallets.values()) {
+      if (wallet.userId === userId) {
+        wallets.push(wallet);
+      }
+    }
+    
+    return wallets;
+  }
+
+  /**
+   * Find user by wallet address (reverse query: address -> user)
+   * Used to verify transaction initiator
+   */
+  async findUserByAddress(address: string): Promise<UserWallet | null> {
+    const normalizedAddress = address.toLowerCase();
+    
+    for (const wallet of this.userWallets.values()) {
+      if (wallet.address.toLowerCase() === normalizedAddress) {
+        return wallet;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get wallet by ID
+   */
+  async getWalletById(walletId: string): Promise<UserWallet | null> {
+    for (const wallet of this.userWallets.values()) {
+      if (wallet.walletId === walletId) {
+        return wallet;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Verify user has specific role wallet (permission verification)
+   */
+  async verifyUserHasRole(userId: string, role: WalletRole): Promise<boolean> {
+    const key = this.getMapKey(userId, role);
+    const wallet = this.userWallets.get(key);
+    return wallet !== null && wallet.state === 'LIVE';
   }
 
   /**
    * Get wallet balance
    */
-  async getWalletBalance(userId: string) {
-    const userWallet = await this.getUserWallet(userId);
+  async getWalletBalance(userId: string, role: WalletRole = WalletRole.INVESTOR) {
+    const userWallet = await this.getUserWallet(userId, role);
     const balance = await this.circleWalletService.getWalletBalance(userWallet.walletId);
     return balance;
   }
