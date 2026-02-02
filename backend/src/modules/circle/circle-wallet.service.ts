@@ -8,6 +8,7 @@ export class CircleWalletService {
   private readonly logger = new Logger(CircleWalletService.name);
   private readonly apiKey: string;
   private readonly entitySecret: string;
+  private readonly walletSetId?: string;
   private readonly circleDeveloperSdk: ReturnType<typeof initiateDeveloperControlledWalletsClient>;
 
   constructor(
@@ -15,12 +16,19 @@ export class CircleWalletService {
   ) {
     this.apiKey = this.configService.get<string>('circle.apiKey');
     this.entitySecret = this.configService.get<string>('circle.entitySecret');
+    this.walletSetId = this.configService.get<string>('circle.walletSetId');
     
     // Initialize Circle Developer SDK
     this.circleDeveloperSdk = initiateDeveloperControlledWalletsClient({
       apiKey: this.apiKey,
       entitySecret: this.entitySecret,
     });
+    
+    if (this.walletSetId) {
+      this.logger.log(`Using fixed WalletSet: ${this.walletSetId}`);
+    } else {
+      this.logger.log('WalletSet ID not configured, will create new WalletSet for each wallet');
+    }
   }
 
   /**
@@ -29,19 +37,25 @@ export class CircleWalletService {
   async createWallet(userId: string, blockchains: string[] = ['ARB-SEPOLIA']): Promise<CircleWallet> {
     this.logger.log(`Creating wallet for user: ${userId}, blockchains: ${blockchains.join(', ')}`);
     try {
-      // First, create a WalletSet
-      const walletSetResponse = await this.circleDeveloperSdk.createWalletSet({
-        name: `User ${userId} WalletSet`,
-      });
+      let walletSetId = this.walletSetId;
       
-      this.logger.log(`WalletSet created: ${walletSetResponse.data?.walletSet?.id}`);
+      // If no fixed wallet set configured, create a new one
+      if (!walletSetId) {
+        const walletSetResponse = await this.circleDeveloperSdk.createWalletSet({
+          name: `User ${userId} WalletSet`,
+        });
+        walletSetId = walletSetResponse.data?.walletSet?.id;
+        this.logger.log(`WalletSet created: ${walletSetId}`);
+      } else {
+        this.logger.log(`Using existing WalletSet: ${walletSetId}`);
+      }
       
       // Create wallet in the WalletSet
       const walletResponse = await this.circleDeveloperSdk.createWallets({
         accountType: 'SCA',
         blockchains: blockchains as Blockchain[],
         count: 1,
-        walletSetId: walletSetResponse.data?.walletSet?.id,
+        walletSetId: walletSetId,
         metadata: [{ name: userId }],
       });
       

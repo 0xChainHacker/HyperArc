@@ -4,5 +4,6 @@ export const circleConfig = () => ({
     entitySecret: process.env.CIRCLE_ENTITY_SECRET,
     apiBaseUrl: process.env.CIRCLE_API_BASE_URL || 'https://api.circle.com',
     walletApiBaseUrl: process.env.CIRCLE_WALLET_API_BASE_URL || 'https://api.circle.com/v1/w3s',
+    walletSetId: process.env.CIRCLE_WALLET_SET_ID, // Optional: reuse existing wallet set
   },
 });
