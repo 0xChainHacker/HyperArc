@@ -198,6 +198,7 @@ export class ArcContractService {
       return {
         issuer: product.issuer,
         active: product.active,
+        frozen: product.frozen,
         priceE6: product.priceE6.toString(),
         metadataURI: product.metadataURI,
       };
@@ -348,6 +349,107 @@ export class ArcContractService {
     if (!txId) throw new Error('Failed to create subscribe transaction');
 
     this.logger.log(`Subscribe tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
+  }
+
+  /**
+   * Set product status (activate/deactivate) and price
+   */
+  async setProduct(
+    walletId: string,
+    productId: number,
+    active: boolean,
+    priceE6: string,
+  ): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(
+      `Setting product ${productId}: active=${active}, priceE6=${priceE6}, walletId=${walletId}`
+    );
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.ledgerAddress,
+      abiFunctionSignature: 'setProduct(uint256,bool,uint256)',
+      abiParameters: [productId.toString(), active, priceE6],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create setProduct transaction');
+
+    this.logger.log(`SetProduct tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
+  }
+
+  /**
+   * Refund investor by burning units and returning USDC
+   */
+  async refund(
+    walletId: string,
+    productId: number,
+    investorAddress: string,
+    units: string,
+  ): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(
+      `Refunding product=${productId} investor=${investorAddress} units=${units} walletId=${walletId}`
+    );
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.ledgerAddress,
+      abiFunctionSignature: 'refund(uint256,address,uint256)',
+      abiParameters: [productId.toString(), investorAddress, units],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create refund transaction');
+
+    this.logger.log(`Refund tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
+  }
+
+  /**
+   * Get contract treasury balance (total USDC in ledger contract)
+   */
+  async getTreasuryBalance(): Promise<string> {
+    this.logger.log('Fetching contract treasury balance');
+    try {
+      const balance = await this.ledgerContract.treasuryBalanceE6();
+      return balance.toString();
+    } catch (error) {
+      this.logger.error('Failed to get treasury balance', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Withdraw subscription funds from contract
+   * Issuer withdraws USDC from the contract
+   */
+  async withdrawSubscriptionFunds(
+    walletId: string,
+    productId: number,
+    amountE6: string,
+  ): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(
+      `Withdrawing subscription funds: product=${productId} amountE6=${amountE6} walletId=${walletId}`
+    );
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.ledgerAddress,
+      abiFunctionSignature: 'withdrawSubscriptionFunds(uint256,uint256)',
+      abiParameters: [productId.toString(), amountE6],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create withdrawal transaction');
+
+    this.logger.log(`Withdrawal tx created: ${txId}`);
     const txHash = await this.waitForCircleTransaction(txId);
     return { txId, txHash };
   }

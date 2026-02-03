@@ -22,3 +22,16 @@ export class ClaimDividendDto {
   userId: string;
   productId: number;
 }
+
+export class RefundDto {
+  issuerUserId: string;  // Issuer who authorizes the refund
+  productId: number;
+  investorAddress: string;  // Investor to refund
+  units: string;  // Number of units to refund
+}
+
+export class WithdrawFundsDto {
+  issuerUserId: string;  // Issuer withdrawing the funds
+  productId: number;
+  amountE6: string;  // USDC amount to withdraw (6 decimals)
+}

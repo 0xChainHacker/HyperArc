@@ -10,6 +10,7 @@ export interface Product {
   issuer: string;
   issuerUserId?: string;
   active: boolean;
+  frozen?: boolean;
   priceE6: string;
   metadataURI: string;
   status: 'pending' | 'approved' | 'rejected';
@@ -269,6 +270,7 @@ export class ProductsService {
         issuer: onChainProduct.issuer,
         issuerUserId: localProduct?.issuerUserId,
         active: onChainProduct.active,
+        frozen: onChainProduct.frozen,
         priceE6: onChainProduct.priceE6,
         metadataURI: onChainProduct.metadataURI || localProduct?.metadataURI || '',
         status: localProduct?.status || 'approved',
@@ -296,6 +298,202 @@ export class ProductsService {
     } catch (error) {
       this.logger.error(`Failed to get total units for product ${productId}`, error.message);
       return '0';
+    }
+  }
+
+  /**
+   * Deactivate product to prevent new investments
+   * This should be called before refunding investors
+   */
+  async deactivateProduct(productId: number, issuerUserId: string) {
+    this.logger.log(`Deactivating product ${productId} by issuer ${issuerUserId}`);
+
+    if (!issuerUserId) {
+      throw new BadRequestException('issuerUserId is required');
+    }
+
+    try {
+      // Verify issuer has wallet
+      const issuerWallet = await this.usersService.getUserWallet(
+        issuerUserId,
+        WalletRole.ISSUER
+      );
+
+      const walletId = issuerWallet.walletId;
+
+      // Get current product info from blockchain
+      const product = await this.arcContractService.getProduct(productId);
+
+      // Call setProduct with active=false
+      const result = await this.arcContractService.setProduct(
+        walletId,
+        productId,
+        false,  // active = false
+        product.priceE6,
+      );
+
+      // Update local product status
+      const localProduct = this.products.find((p) => p.productId === productId);
+      if (localProduct) {
+        localProduct.active = false;
+        this.saveProduct(localProduct);
+      }
+
+      this.logger.log(`Product ${productId} deactivated successfully`);
+
+      return {
+        success: true,
+        productId,
+        txId: result.txId,
+        txHash: result.txHash,
+        message: 'Product deactivated successfully. New investments are now disabled.',
+      };
+    } catch (error) {
+      this.logger.error(`Failed to deactivate product ${productId}`, error.message);
+      throw new BadRequestException(`Failed to deactivate product: ${error.message}`);
+    }
+  }
+
+  /**
+   * Refund investor by burning units and returning USDC
+   * Product must be deactivated first to prevent race conditions
+   */
+  async refundInvestor(productId: number, dto: any) {
+    this.logger.log(
+      `Refunding investor ${dto.investorAddress} for product ${productId}, units: ${dto.units}`
+    );
+
+    if (!dto.issuerUserId) {
+      throw new BadRequestException('issuerUserId is required');
+    }
+
+    try {
+      // Verify issuer has wallet
+      const issuerWallet = await this.usersService.getUserWallet(
+        dto.issuerUserId,
+        WalletRole.ISSUER
+      );
+
+      const walletId = issuerWallet.walletId;
+
+      // Verify product is deactivated
+      const product = await this.arcContractService.getProduct(productId);
+      if (product.active) {
+        throw new BadRequestException(
+          'Product must be deactivated before refunding investors. Call /deactivate first.'
+        );
+      }
+
+      // Verify investor has sufficient holdings
+      const holding = await this.arcContractService.getHolding(
+        productId,
+        dto.investorAddress
+      );
+
+      if (BigInt(holding) < BigInt(dto.units)) {
+        throw new BadRequestException(
+          `Investor only has ${holding} units, cannot refund ${dto.units} units`
+        );
+      }
+
+      // Execute refund on blockchain
+      const result = await this.arcContractService.refund(
+        walletId,
+        productId,
+        dto.investorAddress,
+        dto.units,
+      );
+
+      this.logger.log(
+        `Refund successful. Product ${productId}, Investor ${dto.investorAddress}, Units: ${dto.units}`
+      );
+
+      return {
+        success: true,
+        productId,
+        investorAddress: dto.investorAddress,
+        units: dto.units,
+        txId: result.txId,
+        txHash: result.txHash,
+        message: 'Investor refunded successfully',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to refund investor for product ${productId}`,
+        error.message
+      );
+      throw new BadRequestException(`Failed to refund investor: ${error.message}`);
+    }
+  }
+
+  /**
+   * Withdraw subscription funds from contract
+   * Issuer withdraws USDC that investors paid for subscriptions
+   */
+  async withdrawSubscriptionFunds(productId: number, dto: any) {
+    this.logger.log(
+      `Issuer withdrawing ${dto.amountE6} USDC from product ${productId}`
+    );
+
+    if (!dto.issuerUserId) {
+      throw new BadRequestException('issuerUserId is required');
+    }
+
+    try {
+      // Verify issuer has wallet
+      const issuerWallet = await this.usersService.getUserWallet(
+        dto.issuerUserId,
+        WalletRole.ISSUER
+      );
+
+      const walletId = issuerWallet.walletId;
+
+      // Get product to verify issuer
+      const product = await this.arcContractService.getProduct(productId);
+      const issuerAddress = this.usersService.getAddressForBlockchain(
+        issuerWallet,
+        'ARC-TESTNET'
+      );
+
+      if (product.issuer.toLowerCase() !== issuerAddress.toLowerCase()) {
+        throw new BadRequestException(
+          'Only the product issuer can withdraw subscription funds'
+        );
+      }
+
+      // Check contract balance
+      const treasuryBalance = await this.arcContractService.getTreasuryBalance();
+      if (BigInt(treasuryBalance) < BigInt(dto.amountE6)) {
+        throw new BadRequestException(
+          `Insufficient contract balance. Available: ${treasuryBalance}, Requested: ${dto.amountE6}`
+        );
+      }
+
+      // Execute withdrawal on blockchain
+      const result = await this.arcContractService.withdrawSubscriptionFunds(
+        walletId,
+        productId,
+        dto.amountE6,
+      );
+
+      this.logger.log(
+        `Withdrawal successful. Product ${productId}, Amount: ${dto.amountE6} USDC`
+      );
+
+      return {
+        success: true,
+        productId,
+        amountE6: dto.amountE6,
+        txId: result.txId,
+        txHash: result.txHash,
+        message: 'Subscription funds withdrawn successfully',
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to withdraw funds for product ${productId}`,
+        error.message
+      );
+      throw new BadRequestException(`Failed to withdraw funds: ${error.message}`);
     }
   }
 }
