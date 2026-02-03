@@ -59,7 +59,7 @@ export class CircleWalletService {
       
       // Create wallet in the WalletSet
       const walletResponse = await this.circleDeveloperSdk.createWallets({
-        accountType: 'SCA',
+        accountType: 'EOA',
         blockchains: blockchains as Blockchain[],
         count: 1,
         walletSetId: walletSetId,
@@ -71,7 +71,7 @@ export class CircleWalletService {
       
       return {
         id: wallet?.id || '',
-        accountType: 'SCA',
+        accountType: 'EOA',
         blockchains: wallet?.blockchain ? [wallet.blockchain] : [],
         address: wallet?.address,
         state: (wallet?.state as 'LIVE' | 'FROZEN') || 'LIVE',
@@ -108,7 +108,7 @@ export class CircleWalletService {
       
       // Create wallet in the WalletSet with all blockchains
       const walletResponse = await this.circleDeveloperSdk.createWallets({
-        accountType: 'SCA',
+        accountType: 'EOA',
         blockchains: blockchains as Blockchain[],
         count: 1,
         walletSetId: walletSetId,
@@ -170,7 +170,7 @@ export class CircleWalletService {
       
       return {
         id: wallet?.id || '',
-        accountType: 'SCA',
+        accountType: 'EOA',
         blockchains: wallet?.blockchain ? [wallet.blockchain] : [],
         address: wallet?.address,
         state: (wallet?.state as 'LIVE' | 'FROZEN') || 'LIVE',
