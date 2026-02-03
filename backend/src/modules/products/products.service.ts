@@ -178,7 +178,8 @@ export class ProductsService {
   }
 
   /**
-   * Approve and deploy product to blockchain (Admin only)
+   * Approve product (Admin only)
+   * Note: This only updates status. Deployment to blockchain is done separately via script.
    */
   async approveProduct(productId: number, adminUserId: string): Promise<Product> {
     this.logger.log(`Admin ${adminUserId} approving product ${productId}`);
@@ -194,40 +195,17 @@ export class ProductsService {
       );
     }
 
-    try {
-      // Get issuer wallet to deploy on-chain
-      const issuerWallet = await this.usersService.getUserWallet(
-        product.issuerUserId,
-        WalletRole.ISSUER
-      );
+    // Update product status to approved
+    product.status = 'approved';
+    product.approvedAt = new Date().toISOString();
 
-      // Deploy to blockchain
-      const result = await this.arcContractService.createProduct(
-        issuerWallet.walletId,
-        product.issuer,
-        product.priceE6,
-        product.metadataURI,
-      );
+    this.saveProduct(product);
 
-      // Update product status
-      product.status = 'approved';
-      product.active = true;
-      product.approvedAt = new Date().toISOString();
-      product.txHash = result.txId;
+    this.logger.log(
+      `Product ${productId} approved. Deployment to blockchain should be done via separate script.`
+    );
 
-      this.saveProduct(product);
-
-      this.logger.log(
-        `Product ${productId} approved and deployed on-chain. TxHash: ${result.txId}`
-      );
-
-      return product;
-    } catch (error) {
-      this.logger.error(`Failed to approve product ${productId}`, error.message);
-      throw new BadRequestException(
-        `Failed to approve product: ${error.message}`
-      );
-    }
+    return product;
   }
 
   /**
@@ -271,29 +249,41 @@ export class ProductsService {
 
   /**
    * Get product by ID
-   * For approved products, fetches latest data from blockchain
+   * Fetches data from blockchain
    */
   async getProduct(productId: number): Promise<Product> {
     this.logger.log(`Fetching product: ${productId}`);
     
-    const product = this.products.find((p) => p.productId === productId);
-    if (!product) {
-      throw new BadRequestException(`Product ${productId} not found`);
+    try {
+      const onChainProduct = await this.arcContractService.getProduct(productId);
+      
+      // Find local product data for additional info
+      const localProduct = this.products.find((p) => p.productId === productId);
+      
+      // Merge on-chain data with local metadata
+      const product: Product = {
+        productId,
+        name: localProduct?.name || `Product ${productId}`,
+        description: localProduct?.description || '',
+        issuer: onChainProduct.issuer,
+        issuerUserId: localProduct?.issuerUserId,
+        active: onChainProduct.active,
+        priceE6: onChainProduct.priceE6,
+        metadataURI: onChainProduct.metadataURI || localProduct?.metadataURI || '',
+        status: localProduct?.status || 'approved',
+        createdAt: localProduct?.createdAt || new Date().toISOString(),
+        approvedAt: localProduct?.approvedAt,
+        txHash: localProduct?.txHash,
+      };
+      
+      this.logger.log(`Fetched product ${productId} from blockchain`);
+      return product;
+    } catch (error) {
+      this.logger.error(`Failed to fetch product ${productId} from blockchain: ${error.message}`);
+      throw new BadRequestException(
+        `Product ${productId} not found on blockchain`
+      );
     }
-
-    // For approved products, fetch latest on-chain data
-    if (product.status === 'approved') {
-      try {
-        const onChainProduct = await this.arcContractService.getProduct(productId);
-        product.active = onChainProduct.active;
-        product.priceE6 = onChainProduct.priceE6;
-        this.logger.log(`Updated product ${productId} with on-chain data`);
-      } catch (error) {
-        this.logger.warn(`Could not fetch on-chain data for product ${productId}: ${error.message}`);
-      }
-    }
-
-    return product;
   }
 
   /**
