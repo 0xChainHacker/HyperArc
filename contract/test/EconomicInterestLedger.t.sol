@@ -53,6 +53,8 @@ contract EconomicInterestLedgerTest is Test {
     event ProductCreated(uint256 indexed productId, address indexed issuer, uint256 priceE6, string metadataURI);
     event ProductStatusUpdated(uint256 indexed productId, bool active, uint256 priceE6);
     event Subscribed(uint256 indexed productId, address indexed investor, uint256 usdcPaidE6, uint256 unitsMinted);
+    event SubscriptionFundsWithdrawn(uint256 indexed productId, address indexed issuer, uint256 amountE6);
+    event Refunded(uint256 indexed productId, address indexed investor, uint256 unitsBurned, uint256 usdcRefundedE6);
 
     /// @notice Set up test environment before each test
     /// @dev Deploys contracts and funds investors with USDC
@@ -283,5 +285,186 @@ contract EconomicInterestLedgerTest is Test {
         
         assertEq(ledger.holdingOf(productId1, investor1), 10);
         assertEq(ledger.holdingOf(productId2, investor1), 20);
+    }
+
+    /// @notice Test issuer can withdraw subscription funds
+    function testWithdrawSubscriptionFunds() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Investor subscribes
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        uint256 issuerBalanceBefore = usdc.balanceOf(issuer);
+        uint256 withdrawAmount = 50_000_000; // 50 USDC
+        
+        // Issuer withdraws funds
+        vm.prank(issuer);
+        vm.expectEmit(true, true, false, true);
+        emit SubscriptionFundsWithdrawn(productId, issuer, withdrawAmount);
+        ledger.withdrawSubscriptionFunds(productId, withdrawAmount);
+        
+        // Verify withdrawal
+        assertEq(usdc.balanceOf(issuer), issuerBalanceBefore + withdrawAmount);
+        assertEq(ledger.treasuryBalanceE6(), 50_000_000);
+    }
+
+    /// @notice Test only issuer can withdraw subscription funds
+    function testWithdrawSubscriptionFundsOnlyIssuer() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        // Non-issuer tries to withdraw
+        vm.prank(investor1);
+        vm.expectRevert("not issuer");
+        ledger.withdrawSubscriptionFunds(productId, 50_000_000);
+    }
+
+    /// @notice Test withdrawal fails with insufficient balance
+    function testWithdrawSubscriptionFundsInsufficientBalance() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        // Try to withdraw more than available
+        vm.prank(issuer);
+        vm.expectRevert("insufficient balance");
+        ledger.withdrawSubscriptionFunds(productId, 200_000_000);
+    }
+
+    /// @notice Test withdrawal with zero amount fails
+    function testWithdrawSubscriptionFundsZeroAmount() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        vm.prank(issuer);
+        vm.expectRevert("amount=0");
+        ledger.withdrawSubscriptionFunds(productId, 0);
+    }
+
+    /// @notice Test issuer can refund investor
+    function testRefund() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Investor subscribes with 100 USDC -> 10 units
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        uint256 investor1BalanceBefore = usdc.balanceOf(investor1);
+        uint256 refundUnits = 5;
+        uint256 expectedRefund = refundUnits * PRICE_PER_UNIT; // 50 USDC
+        
+        // Issuer refunds 5 units
+        vm.prank(issuer);
+        vm.expectEmit(true, true, false, true);
+        emit Refunded(productId, investor1, refundUnits, expectedRefund);
+        ledger.refund(productId, investor1, refundUnits);
+        
+        // Verify refund
+        assertEq(ledger.holdingOf(productId, investor1), 5); // 10 - 5 = 5 units remaining
+        assertEq(ledger.totalUnits(productId), 5);
+        assertEq(usdc.balanceOf(investor1), investor1BalanceBefore + expectedRefund);
+        assertEq(ledger.treasuryBalanceE6(), 50_000_000); // 100 - 50 = 50 USDC remaining
+    }
+
+    /// @notice Test only issuer can refund
+    function testRefundOnlyIssuer() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        // Non-issuer tries to refund
+        vm.prank(investor2);
+        vm.expectRevert("not issuer");
+        ledger.refund(productId, investor1, 5);
+    }
+
+    /// @notice Test refund fails with insufficient units
+    function testRefundInsufficientUnits() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000); // 10 units
+        vm.stopPrank();
+        
+        // Try to refund more units than investor has
+        vm.prank(issuer);
+        vm.expectRevert("insufficient units");
+        ledger.refund(productId, investor1, 15);
+    }
+
+    /// @notice Test refund fails with insufficient contract balance
+    function testRefundInsufficientBalance() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        // Issuer withdraws all funds
+        vm.prank(issuer);
+        ledger.withdrawSubscriptionFunds(productId, 100_000_000);
+        
+        // Try to refund when no balance left
+        vm.prank(issuer);
+        vm.expectRevert("insufficient balance");
+        ledger.refund(productId, investor1, 5);
+    }
+
+    /// @notice Test refund with zero units fails
+    function testRefundZeroUnits() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        vm.prank(issuer);
+        vm.expectRevert("units=0");
+        ledger.refund(productId, investor1, 0);
+    }
+
+    /// @notice Test full refund scenario
+    function testFullRefund() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Investor subscribes with 100 USDC -> 10 units
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        uint256 investor1BalanceBefore = usdc.balanceOf(investor1);
+        
+        // Issuer refunds all 10 units
+        vm.prank(issuer);
+        ledger.refund(productId, investor1, 10);
+        
+        // Verify complete refund
+        assertEq(ledger.holdingOf(productId, investor1), 0);
+        assertEq(ledger.totalUnits(productId), 0);
+        assertEq(usdc.balanceOf(investor1), investor1BalanceBefore + 100_000_000);
+        assertEq(ledger.treasuryBalanceE6(), 0);
     }
 }

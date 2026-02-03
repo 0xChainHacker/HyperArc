@@ -31,6 +31,13 @@ contract EconomicInterestLedger is Ownable {
     event ProductCreated(uint256 indexed productId, address indexed issuer, uint256 priceE6, string metadataURI);
     event ProductStatusUpdated(uint256 indexed productId, bool active, uint256 priceE6);
     event Subscribed(uint256 indexed productId, address indexed investor, uint256 usdcPaidE6, uint256 unitsMinted);
+    event SubscriptionFundsWithdrawn(uint256 indexed productId, address indexed issuer, uint256 amountE6);
+    event Refunded(uint256 indexed productId, address indexed investor, uint256 unitsBurned, uint256 usdcRefundedE6);
+
+    modifier onlyIssuer(uint256 productId) {
+        require(products[productId].issuer == msg.sender, "not issuer");
+        _;
+    }
 
     constructor(address usdc_, address owner_) Ownable(owner_) {
         require(usdc_ != address(0), "USDC=0");
@@ -89,6 +96,38 @@ contract EconomicInterestLedger is Ownable {
         _totalUnits[productId] += units;
 
         emit Subscribed(productId, msg.sender, units * p.priceE6, units);
+    }
+
+    /// @notice Issuer withdraws subscription funds from treasury.
+    /// @param productId The product ID
+    /// @param amountE6 Amount of USDC to withdraw (6 decimals)
+    function withdrawSubscriptionFunds(uint256 productId, uint256 amountE6) external onlyIssuer(productId) {
+        require(amountE6 > 0, "amount=0");
+        require(usdc.balanceOf(address(this)) >= amountE6, "insufficient balance");
+
+        usdc.safeTransfer(msg.sender, amountE6);
+        emit SubscriptionFundsWithdrawn(productId, msg.sender, amountE6);
+    }
+
+    /// @notice Issuer refunds investor by burning units and returning USDC.
+    /// @param productId The product ID
+    /// @param investor The investor address to refund
+    /// @param units Number of units to burn and refund
+    function refund(uint256 productId, address investor, uint256 units) external onlyIssuer(productId) {
+        require(units > 0, "units=0");
+        require(_holdings[productId][investor] >= units, "insufficient units");
+
+        Product memory p = products[productId];
+        uint256 refundAmountE6 = units * p.priceE6;
+        require(usdc.balanceOf(address(this)) >= refundAmountE6, "insufficient balance");
+
+        // Burn units
+        _holdings[productId][investor] -= units;
+        _totalUnits[productId] -= units;
+
+        // Transfer USDC back to investor
+        usdc.safeTransfer(investor, refundAmountE6);
+        emit Refunded(productId, investor, units, refundAmountE6);
     }
 
     // ========= Read API =========
