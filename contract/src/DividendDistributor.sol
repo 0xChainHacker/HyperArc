@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface IEconomicInterestLedger {
-    function products(uint256 productId) external view returns (address issuer, bool active, uint256 priceE6, string memory metadataURI);
+    function products(uint256 productId) external view returns (address issuer, bool active, bool frozen, uint256 priceE6, string memory metadataURI);
     function holdingOf(uint256 productId, address investor) external view returns (uint256);
     function totalUnits(uint256 productId) external view returns (uint256);
 }
@@ -35,7 +35,7 @@ contract DividendDistributor is ReentrancyGuard {
     }
 
     modifier onlyIssuer(uint256 productId) {
-        (address issuer,,,) = ledger.products(productId);
+        (address issuer,,,,) = ledger.products(productId);
         require(msg.sender == issuer, "not issuer");
         _;
     }

@@ -53,6 +53,7 @@ contract DividendDistributorTest is Test {
     
     event DividendDeclared(uint256 indexed productId, address indexed issuer, uint256 amountE6, uint256 accDividendPerShareNew);
     event Claimed(uint256 indexed productId, address indexed investor, uint256 amountE6);
+    event UnclaimedDividendWithdrawn(uint256 indexed productId, address indexed issuer, uint256 amountE6);
 
     /// @notice Set up test environment with deployed contracts and subscriptions
     /// @dev Creates a product with two investors holding 10 and 20 units respectively
@@ -346,5 +347,89 @@ contract DividendDistributorTest is Test {
         vm.stopPrank();
         
         assertEq(distributor.pending(productId, zeroUnitsInvestor), 0);
+    }
+
+    /// @notice Test issuer can withdraw unclaimed dividends
+    function testWithdrawUnclaimedDividend() public {
+        uint256 dividendAmount = 300_000_000; // 300 USDC
+        
+        // Declare dividend
+        vm.startPrank(issuer);
+        usdc.approve(address(distributor), dividendAmount);
+        distributor.declareDividend(productId, dividendAmount);
+        vm.stopPrank();
+        
+        // investor1 claims their 100 USDC
+        vm.prank(investor1);
+        distributor.claim(productId);
+        
+        // Remaining: 200 USDC (investor2's portion)
+        // Issuer withdraws 100 USDC of unclaimed
+        uint256 issuerBalanceBefore = usdc.balanceOf(issuer);
+        uint256 withdrawAmount = 100_000_000;
+        
+        vm.prank(issuer);
+        vm.expectEmit(true, true, false, true);
+        emit UnclaimedDividendWithdrawn(productId, issuer, withdrawAmount);
+        distributor.withdrawUnclaimedDividend(productId, withdrawAmount);
+        
+        // Verify withdrawal
+        assertEq(usdc.balanceOf(issuer), issuerBalanceBefore + withdrawAmount);
+        assertEq(usdc.balanceOf(address(distributor)), 100_000_000); // 200 - 100 withdrawn
+    }
+
+    /// @notice Test only issuer can withdraw unclaimed dividends
+    function testWithdrawUnclaimedDividendOnlyIssuer() public {
+        vm.startPrank(issuer);
+        usdc.approve(address(distributor), 300_000_000);
+        distributor.declareDividend(productId, 300_000_000);
+        vm.stopPrank();
+        
+        // Non-issuer tries to withdraw
+        vm.prank(investor1);
+        vm.expectRevert("not issuer");
+        distributor.withdrawUnclaimedDividend(productId, 100_000_000);
+    }
+
+    /// @notice Test withdraw unclaimed with zero amount fails
+    function testWithdrawUnclaimedDividendZeroAmount() public {
+        vm.prank(issuer);
+        vm.expectRevert("amount=0");
+        distributor.withdrawUnclaimedDividend(productId, 0);
+    }
+
+    /// @notice Test withdraw unclaimed with insufficient balance fails
+    function testWithdrawUnclaimedDividendInsufficientBalance() public {
+        vm.startPrank(issuer);
+        usdc.approve(address(distributor), 300_000_000);
+        distributor.declareDividend(productId, 300_000_000);
+        vm.stopPrank();
+        
+        // Try to withdraw more than available
+        vm.prank(issuer);
+        vm.expectRevert("insufficient balance");
+        distributor.withdrawUnclaimedDividend(productId, 500_000_000);
+    }
+
+    /// @notice Test withdrawal after all investors claimed
+    function testWithdrawAfterAllClaimed() public {
+        vm.startPrank(issuer);
+        usdc.approve(address(distributor), 300_000_000);
+        distributor.declareDividend(productId, 300_000_000);
+        vm.stopPrank();
+        
+        // Both investors claim
+        vm.prank(investor1);
+        distributor.claim(productId);
+        vm.prank(investor2);
+        distributor.claim(productId);
+        
+        // No unclaimed dividends left
+        assertEq(usdc.balanceOf(address(distributor)), 0);
+        
+        // Issuer tries to withdraw
+        vm.prank(issuer);
+        vm.expectRevert("insufficient balance");
+        distributor.withdrawUnclaimedDividend(productId, 1);
     }
 }

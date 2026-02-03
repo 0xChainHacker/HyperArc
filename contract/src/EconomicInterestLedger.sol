@@ -12,6 +12,7 @@ contract EconomicInterestLedger is Ownable {
     struct Product {
         address issuer;        // issuer / SPV address (who can declare dividends)
         bool active;           // can subscribe when active
+        bool frozen;           // owner can freeze to prevent issuer withdrawal (emergency)
         uint256 priceE6;       // price per 1 unit in USDC (6 decimals). e.g. 10 USDC => 10_000_000
         string metadataURI;    // optional off-chain metadata
     }
@@ -30,6 +31,7 @@ contract EconomicInterestLedger is Ownable {
 
     event ProductCreated(uint256 indexed productId, address indexed issuer, uint256 priceE6, string metadataURI);
     event ProductStatusUpdated(uint256 indexed productId, bool active, uint256 priceE6);
+    event ProductFrozen(uint256 indexed productId, bool frozen);
     event Subscribed(uint256 indexed productId, address indexed investor, uint256 usdcPaidE6, uint256 unitsMinted);
     event SubscriptionFundsWithdrawn(uint256 indexed productId, address indexed issuer, uint256 amountE6);
     event Refunded(uint256 indexed productId, address indexed investor, uint256 unitsBurned, uint256 usdcRefundedE6);
@@ -56,6 +58,7 @@ contract EconomicInterestLedger is Ownable {
         products[productId] = Product({
             issuer: issuer,
             active: true,
+            frozen: false,
             priceE6: priceE6,
             metadataURI: metadataURI
         });
@@ -76,6 +79,16 @@ contract EconomicInterestLedger is Ownable {
         p.priceE6 = priceE6;
 
         emit ProductStatusUpdated(productId, active, priceE6);
+    }
+
+    /// @notice Owner can freeze/unfreeze product to prevent issuer withdrawal (emergency).
+    /// @dev Frozen products cannot withdraw funds, but can still be refunded to protect investors.
+    function freezeProduct(uint256 productId, bool frozen) external onlyOwner {
+        Product storage p = products[productId];
+        require(p.issuer != address(0), "no product");
+
+        p.frozen = frozen;
+        emit ProductFrozen(productId, frozen);
     }
 
     /// @notice Subscribe economic interests by paying USDC.
@@ -103,6 +116,7 @@ contract EconomicInterestLedger is Ownable {
     /// @param amountE6 Amount of USDC to withdraw (6 decimals)
     function withdrawSubscriptionFunds(uint256 productId, uint256 amountE6) external onlyIssuer(productId) {
         require(amountE6 > 0, "amount=0");
+        require(!products[productId].frozen, "product frozen");
         require(usdc.balanceOf(address(this)) >= amountE6, "insufficient balance");
 
         usdc.safeTransfer(msg.sender, amountE6);

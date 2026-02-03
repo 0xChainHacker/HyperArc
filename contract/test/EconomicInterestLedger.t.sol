@@ -52,6 +52,7 @@ contract EconomicInterestLedgerTest is Test {
     
     event ProductCreated(uint256 indexed productId, address indexed issuer, uint256 priceE6, string metadataURI);
     event ProductStatusUpdated(uint256 indexed productId, bool active, uint256 priceE6);
+    event ProductFrozen(uint256 indexed productId, bool frozen);
     event Subscribed(uint256 indexed productId, address indexed investor, uint256 usdcPaidE6, uint256 unitsMinted);
     event SubscriptionFundsWithdrawn(uint256 indexed productId, address indexed issuer, uint256 amountE6);
     event Refunded(uint256 indexed productId, address indexed investor, uint256 unitsBurned, uint256 usdcRefundedE6);
@@ -86,9 +87,10 @@ contract EconomicInterestLedgerTest is Test {
         assertEq(ledger.productCount(), 1);
         
         // Verify all product attributes are correctly stored
-        (address _issuer, bool active, uint256 price, string memory uri) = ledger.products(1);
+        (address _issuer, bool active, bool frozen, uint256 price, string memory uri) = ledger.products(1);
         assertEq(_issuer, issuer);
         assertTrue(active);
+        assertFalse(frozen);
         assertEq(price, PRICE_PER_UNIT);
         assertEq(uri, "ipfs://test");
     }
@@ -133,7 +135,7 @@ contract EconomicInterestLedgerTest is Test {
         ledger.setProduct(productId, false, newPrice);
         
         // Verify changes applied
-        (, bool active, uint256 price,) = ledger.products(productId);
+        (, bool active,, uint256 price,) = ledger.products(productId);
         assertFalse(active);
         assertEq(price, newPrice);
     }
@@ -145,7 +147,7 @@ contract EconomicInterestLedgerTest is Test {
         vm.prank(owner);
         ledger.setProduct(productId, false, 15_000_000);
         
-        (, bool active,,) = ledger.products(productId);
+        (, bool active,,,) = ledger.products(productId);
         assertFalse(active);
     }
 
@@ -285,6 +287,106 @@ contract EconomicInterestLedgerTest is Test {
         
         assertEq(ledger.holdingOf(productId1, investor1), 10);
         assertEq(ledger.holdingOf(productId2, investor1), 20);
+    }
+
+    /// @notice Test owner can freeze a product
+    function testFreezeProduct() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Owner freezes product
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, true);
+        emit ProductFrozen(productId, true);
+        ledger.freezeProduct(productId, true);
+        
+        // Verify frozen
+        (,, bool frozen,,) = ledger.products(productId);
+        assertTrue(frozen);
+    }
+
+    /// @notice Test only owner can freeze products
+    function testFreezeProductOnlyOwner() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Issuer tries to freeze
+        vm.prank(issuer);
+        vm.expectRevert();
+        ledger.freezeProduct(productId, true);
+        
+        // Investor tries to freeze
+        vm.prank(investor1);
+        vm.expectRevert();
+        ledger.freezeProduct(productId, true);
+    }
+
+    /// @notice Test freeze prevents issuer from withdrawing funds
+    function testFreezeProductPreventsWithdrawal() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Investor subscribes
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        // Owner freezes product
+        vm.prank(owner);
+        ledger.freezeProduct(productId, true);
+        
+        // Issuer tries to withdraw
+        vm.prank(issuer);
+        vm.expectRevert("product frozen");
+        ledger.withdrawSubscriptionFunds(productId, 50_000_000);
+    }
+
+    /// @notice Test frozen product can still refund investors
+    function testFreezeProductAllowsRefund() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Investor subscribes
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        // Owner freezes product
+        vm.prank(owner);
+        ledger.freezeProduct(productId, true);
+        
+        // Issuer can still refund
+        vm.prank(issuer);
+        ledger.refund(productId, investor1, 5);
+        
+        // Verify refund succeeded
+        assertEq(ledger.holdingOf(productId, investor1), 5);
+    }
+
+    /// @notice Test unfreezing allows withdrawal again
+    function testUnfreezeProductAllowsWithdrawal() public {
+        vm.prank(owner);
+        uint256 productId = ledger.createProduct(issuer, PRICE_PER_UNIT, "ipfs://test");
+        
+        // Investor subscribes
+        vm.startPrank(investor1);
+        usdc.approve(address(ledger), 100_000_000);
+        ledger.subscribe(productId, 100_000_000);
+        vm.stopPrank();
+        
+        // Owner freezes then unfreezes
+        vm.startPrank(owner);
+        ledger.freezeProduct(productId, true);
+        ledger.freezeProduct(productId, false);
+        vm.stopPrank();
+        
+        // Issuer can withdraw now
+        vm.prank(issuer);
+        ledger.withdrawSubscriptionFunds(productId, 50_000_000);
+        
+        assertEq(usdc.balanceOf(issuer), 50_000_000);
     }
 
     /// @notice Test issuer can withdraw subscription funds
