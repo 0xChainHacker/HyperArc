@@ -512,7 +512,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"productId\": {{productId}},\n  \"amountE6\": \"1000000\",\n  \"issuerAddress\": \"0x1234567890abcdef1234567890abcdef12345678\"\n}"
+              "raw": "{\n  \"issuerUserId\": \"{{issuerUserId}}\",\n  \"productId\": {{productId}},\n  \"amountE6\": \"1000000\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/dividends/declare",
