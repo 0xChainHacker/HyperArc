@@ -41,12 +41,15 @@ export class PaymentsService {
     // Get or create investor wallet (investors receive funds)
     const userWallet = await this.usersService.getOrCreateWallet(
       dto.userId,
-      WalletRole.INVESTOR
+      WalletRole.INVESTOR,
+      ['ARC-TESTNET']
     );
-    const arcAddress = userWallet.address;
+    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
 
     if (!arcAddress) {
-      throw new BadRequestException('User does not have an Arc address');
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
     }
 
     // Step 1: Create payment intent for deposit
@@ -109,12 +112,15 @@ export class PaymentsService {
     // Get or create investor wallet (investors subscribe to products)
     const userWallet = await this.usersService.getOrCreateWallet(
       dto.userId,
-      WalletRole.INVESTOR
+      WalletRole.INVESTOR,
+      ['ARC-TESTNET']
     );
-    const arcAddress = userWallet.address;
+    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
 
     if (!arcAddress) {
-      throw new BadRequestException('User does not have an Arc address');
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
     }
 
     // Check USDC balance
@@ -175,9 +181,16 @@ export class PaymentsService {
     // Get investor wallet (investors claim dividends)
     const userWallet = await this.usersService.getOrCreateWallet(
       userId,
-      WalletRole.INVESTOR
+      WalletRole.INVESTOR,
+      ['ARC-TESTNET']
     );
-    const arcAddress = userWallet.address;
+    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
+
+    if (!arcAddress) {
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
+    }
 
     // Check pending dividend
     const pending = await this.arcContractService.getPendingDividend(productId, arcAddress);

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ArcContractService } from '../chain/arc-contract.service';
 import { ProductsService } from '../products/products.service';
 import { UsersService, WalletRole } from '../users/users.service';
@@ -37,9 +37,10 @@ export class PortfolioService {
     // Get investor wallet (portfolio is for investors)
     const userWallet = await this.usersService.getOrCreateWallet(
       userId,
-      WalletRole.INVESTOR
+      WalletRole.INVESTOR,
+      ['ARC-TESTNET']
     );
-    const arcAddress = userWallet.address;
+    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
 
     if (!arcAddress) {
       return {
@@ -100,9 +101,16 @@ export class PortfolioService {
   async getProductHolding(userId: string, productId: number) {
     const userWallet = await this.usersService.getOrCreateWallet(
       userId,
-      WalletRole.INVESTOR
+      WalletRole.INVESTOR,
+      ['ARC-TESTNET']
     );
-    const arcAddress = userWallet.address;
+    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
+
+    if (!arcAddress) {
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
+    }
 
     const units = await this.arcContractService.getHolding(productId, arcAddress);
     const pendingDividend = await this.arcContractService.getPendingDividend(productId, arcAddress);
