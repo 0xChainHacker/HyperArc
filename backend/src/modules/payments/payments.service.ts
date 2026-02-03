@@ -213,22 +213,84 @@ export class PaymentsService {
 
   /**
    * Declare dividend (issuer action)
+   * 1. Verify issuer
+   * 2. Approve USDC to distributor contract
+   * 3. Call declareDividend on distributor
    */
-  async declareDividend(productId: number, amountE6: string, issuerAddress: string) {
-    this.logger.log(`Declaring dividend for product ${productId}: ${amountE6}`);
+  async declareDividend(dto: any) {
+    this.logger.log(
+      `Declaring dividend for product ${dto.productId}: ${dto.amountE6} by issuer ${dto.issuerUserId}`
+    );
 
-    // In production:
-    // 1. Verify caller is the issuer
-    // 2. Create approve USDC transaction
-    // 3. Create declareDividend transaction
-    // 4. Wait for confirmation
+    if (!dto.issuerUserId) {
+      throw new BadRequestException('issuerUserId is required');
+    }
+
+    if (BigInt(dto.amountE6) <= 0n) {
+      throw new BadRequestException('amountE6 must be > 0');
+    }
+
+    // Get issuer wallet
+    const issuerWallet = await this.usersService.getUserWallet(
+      dto.issuerUserId,
+      WalletRole.ISSUER,
+    );
+    const issuerAddress = this.usersService.getAddressForBlockchain(
+      issuerWallet,
+      'ARC-TESTNET'
+    );
+
+    if (!issuerAddress) {
+      throw new BadRequestException(
+        'Issuer does not have an Arc address. Please create issuer wallet with ARC-TESTNET.'
+      );
+    }
+
+    // Get product to verify issuer
+    const product = await this.arcContractService.getProduct(dto.productId);
+    if (product.issuer.toLowerCase() !== issuerAddress.toLowerCase()) {
+      throw new BadRequestException(
+        'Only the product issuer can declare dividends for this product'
+      );
+    }
+
+    // Check issuer USDC balance
+    const balance = await this.arcContractService.getUSDCBalance(issuerAddress);
+    if (BigInt(balance) < BigInt(dto.amountE6)) {
+      throw new BadRequestException(
+        `Insufficient USDC balance. Required: ${dto.amountE6}, Available: ${balance}`
+      );
+    }
+
+    // Approve USDC to distributor contract
+    const approveRes = await this.arcContractService.approveUSDCForDistributor(
+      issuerWallet.walletId,
+      dto.amountE6,
+    );
+    this.logger.log(
+      `USDC approved to distributor: txId=${approveRes.txId} txHash=${approveRes.txHash || 'N/A'}`
+    );
+
+    // Declare dividend
+    const declareRes = await this.arcContractService.declareDividend(
+      issuerWallet.walletId,
+      dto.productId,
+      dto.amountE6,
+    );
+    this.logger.log(
+      `Dividend declared: txId=${declareRes.txId} txHash=${declareRes.txHash || 'N/A'}`
+    );
 
     return {
       success: true,
-      message: 'Dividend declared',
-      productId,
-      amountE6,
-      txHash: '0x...',
+      message: 'Dividend declared successfully',
+      productId: dto.productId,
+      amountE6: dto.amountE6,
+      issuer: issuerAddress,
+      approveTxId: approveRes.txId,
+      approveTxHash: approveRes.txHash,
+      declareTxId: declareRes.txId,
+      declareTxHash: declareRes.txHash,
     };
   }
 
@@ -261,18 +323,25 @@ export class PaymentsService {
       throw new BadRequestException('No pending dividend to claim');
     }
 
-    // In production:
-    // 1. Create claim transaction
-    // 2. Wait for confirmation
+    // Claim dividend via blockchain transaction
+    const claimRes = await this.arcContractService.claimDividend(
+      userWallet.walletId,
+      productId,
+    );
 
-    this.logger.log(`Dividend claim successful for user ${userId}, product ${productId}, amount: ${pending}`);
+    this.logger.log(
+      `Dividend claimed successfully: txId=${claimRes.txId} txHash=${claimRes.txHash || 'N/A'}`
+    );
 
     return {
       success: true,
-      message: 'Dividend claimed',
+      message: 'Dividend claimed successfully',
+      userId,
       productId,
-      amountClaimed: pending,
-      txHash: '0x...',
+      investor: arcAddress,
+      amountClaimedE6: pending,
+      claimTxId: claimRes.txId,
+      claimTxHash: claimRes.txHash,
     };
   }
 }

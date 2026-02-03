@@ -453,4 +453,79 @@ export class ArcContractService {
     const txHash = await this.waitForCircleTransaction(txId);
     return { txId, txHash };
   }
+
+  /**
+   * Approve USDC spending for distributor contract
+   */
+  async approveUSDCForDistributor(walletId: string, amountE6: string): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(`Approving USDC -> Distributor amountE6=${amountE6} walletId=${walletId}`);
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.usdcAddress,
+      abiFunctionSignature: 'approve(address,uint256)',
+      abiParameters: [this.distributorAddress, amountE6],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create USDC approve transaction for distributor');
+
+    this.logger.log(`Approve tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
+  }
+
+  /**
+   * Declare dividend for a product
+   */
+  async declareDividend(
+    walletId: string,
+    productId: number,
+    amountE6: string,
+  ): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(
+      `Declaring dividend: product=${productId} amountE6=${amountE6} walletId=${walletId}`
+    );
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.distributorAddress,
+      abiFunctionSignature: 'declareDividend(uint256,uint256)',
+      abiParameters: [productId.toString(), amountE6],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create declareDividend transaction');
+
+    this.logger.log(`DeclareDividend tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
+  }
+
+  /**
+   * Claim dividend for a product
+   */
+  async claimDividend(
+    walletId: string,
+    productId: number,
+  ): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(`Claiming dividend: product=${productId} walletId=${walletId}`);
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.distributorAddress,
+      abiFunctionSignature: 'claim(uint256)',
+      abiParameters: [productId.toString()],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create claim transaction');
+
+    this.logger.log(`Claim tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
+  }
 }

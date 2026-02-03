@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, ParseIntPipe } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
-import { FundArcDto, SubscribeDto } from './dto/payment.dto';
+import { FundArcDto, SubscribeDto, DeclareDividendDto, ClaimDividendDto } from './dto/payment.dto';
 
 @Controller()
 export class PaymentsController {
@@ -25,20 +25,12 @@ export class PaymentsController {
 
   // Dividends API
   @Post('dividends/declare')
-  async declareDividend(
-    @Body() body: { productId: number; amountE6: string; issuerAddress: string },
-  ) {
-    return this.paymentsService.declareDividend(
-      body.productId,
-      body.amountE6,
-      body.issuerAddress,
-    );
+  async declareDividend(@Body() dto: DeclareDividendDto) {
+    return this.paymentsService.declareDividend(dto);
   }
 
   @Post('dividends/claim')
-  async claimDividend(
-    @Body() body: { userId: string; productId: number },
-  ) {
-    return this.paymentsService.claimDividend(body.userId, body.productId);
+  async claimDividend(@Body() dto: ClaimDividendDto) {
+    return this.paymentsService.claimDividend(dto.userId, dto.productId);
   }
 }
