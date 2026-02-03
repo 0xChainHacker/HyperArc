@@ -91,4 +91,13 @@ export class ProductsController {
   ) {
     return this.productsService.withdrawSubscriptionFunds(productId, dto);
   }
+
+  /**
+   * Get contract treasury balance
+   * Returns total USDC held in the contract
+   */
+  @Get('treasury/balance')
+  async getTreasuryBalance() {
+    return this.productsService.getTreasuryBalance();
+  }
 }

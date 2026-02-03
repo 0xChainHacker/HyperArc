@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { PortfolioService } from './portfolio.service';
 
 @Controller('portfolio')
@@ -16,5 +16,27 @@ export class PortfolioController {
     @Param('productId', ParseIntPipe) productId: number,
   ) {
     return this.portfolioService.getProductHolding(userId, productId);
+  }
+
+  /**
+   * Get USDC balance for user's wallet
+   */
+  @Get(':userId/usdc-balance')
+  async getUSDCBalance(
+    @Param('userId') userId: string,
+    @Query('role') role?: string,
+  ) {
+    return this.portfolioService.getUSDCBalance(userId, role);
+  }
+
+  /**
+   * Get USDC allowance for ledger contract
+   */
+  @Get(':userId/usdc-allowance')
+  async getUSDCAllowance(
+    @Param('userId') userId: string,
+    @Query('role') role?: string,
+  ) {
+    return this.portfolioService.getUSDCAllowance(userId, role);
   }
 }

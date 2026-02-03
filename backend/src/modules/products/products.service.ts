@@ -496,4 +496,20 @@ export class ProductsService {
       throw new BadRequestException(`Failed to withdraw funds: ${error.message}`);
     }
   }
+
+  /**
+   * Get contract treasury balance
+   */
+  async getTreasuryBalance() {
+    try {
+      const balance = await this.arcContractService.getTreasuryBalance();
+      return {
+        balanceE6: balance,
+        balanceUSDC: (Number(balance) / 1e6).toFixed(2),
+      };
+    } catch (error) {
+      this.logger.error('Failed to get treasury balance', error.message);
+      throw new BadRequestException(`Failed to get treasury balance: ${error.message}`);
+    }
+  }
 }

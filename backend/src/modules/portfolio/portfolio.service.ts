@@ -122,4 +122,64 @@ export class PortfolioService {
       pendingDividend,
     };
   }
+
+  /**
+   * Get USDC balance for user's wallet
+   */
+  async getUSDCBalance(userId: string, role?: string) {
+    const walletRole = role === 'issuer' ? WalletRole.ISSUER : WalletRole.INVESTOR;
+    
+    const userWallet = await this.usersService.getOrCreateWallet(
+      userId,
+      walletRole,
+      ['ARC-TESTNET']
+    );
+    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
+
+    if (!arcAddress) {
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
+    }
+
+    const balance = await this.arcContractService.getUSDCBalance(arcAddress);
+
+    return {
+      userId,
+      role: walletRole,
+      address: arcAddress,
+      balanceE6: balance,
+      balanceUSDC: (Number(balance) / 1e6).toFixed(2),
+    };
+  }
+
+  /**
+   * Get USDC allowance for ledger contract
+   */
+  async getUSDCAllowance(userId: string, role?: string) {
+    const walletRole = role === 'issuer' ? WalletRole.ISSUER : WalletRole.INVESTOR;
+    
+    const userWallet = await this.usersService.getOrCreateWallet(
+      userId,
+      walletRole,
+      ['ARC-TESTNET']
+    );
+    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
+
+    if (!arcAddress) {
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
+    }
+
+    const allowance = await this.arcContractService.getUSDCAllowance(arcAddress);
+
+    return {
+      userId,
+      role: walletRole,
+      address: arcAddress,
+      allowanceE6: allowance,
+      allowanceUSDC: (Number(allowance) / 1e6).toFixed(2),
+    };
+  }
 }
