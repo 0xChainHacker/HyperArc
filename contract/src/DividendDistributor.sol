@@ -26,6 +26,7 @@ contract DividendDistributor is ReentrancyGuard {
 
     event DividendDeclared(uint256 indexed productId, address indexed issuer, uint256 amountE6, uint256 accDividendPerShareNew);
     event Claimed(uint256 indexed productId, address indexed investor, uint256 amountE6);
+    event UnclaimedDividendWithdrawn(uint256 indexed productId, address indexed issuer, uint256 amountE6);
 
     constructor(address usdc_, address ledger_) {
         require(usdc_ != address(0) && ledger_ != address(0), "zero addr");
@@ -95,4 +96,14 @@ contract DividendDistributor is ReentrancyGuard {
         uint256 acc = accDividendPerShare[productId];
         rewardDebt[productId][investor] = (units * acc) / 1e18;
     }
-}
+    /// @notice Issuer withdraws unclaimed dividends from the contract.
+    /// @dev Only issuer can withdraw. This prevents dividends from being locked forever.
+    /// @param productId The product ID
+    /// @param amountE6 Amount of USDC to withdraw (6 decimals)
+    function withdrawUnclaimedDividend(uint256 productId, uint256 amountE6) external onlyIssuer(productId) nonReentrant {
+        require(amountE6 > 0, "amount=0");
+        require(usdc.balanceOf(address(this)) >= amountE6, "insufficient balance");
+
+        usdc.safeTransfer(msg.sender, amountE6);
+        emit UnclaimedDividendWithdrawn(productId, msg.sender, amountE6);
+    }}
