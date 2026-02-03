@@ -44,22 +44,32 @@ export class ProductsService {
         WalletRole.ISSUER
       );
 
-      this.logger.log(
-        `Using issuer wallet: ${issuerWallet.walletId}, address: ${issuerWallet.address}`
-      );
-
-      // 2. Verify issuerAddress matches wallet address
-      if (dto.issuerAddress.toLowerCase() !== issuerWallet.address.toLowerCase()) {
-        this.logger.warn(
-          `Issuer address mismatch for user ${issuerUserId}. ` +
-          `Expected: ${issuerWallet.address}, Provided: ${dto.issuerAddress}`
-        );
+      // 2. Get address on ARC-TESTNET blockchain
+      const arcAddress = this.usersService.getAddressForBlockchain(issuerWallet, 'ARC-TESTNET');
+      
+      if (!arcAddress) {
         throw new BadRequestException(
-          'Issuer address does not match your wallet address'
+          'Issuer wallet does not have an address on ARC-TESTNET. ' +
+          'Please create wallet with ARC-TESTNET blockchain.'
         );
       }
 
-      // 3. Create product on-chain
+      this.logger.log(
+        `Using issuer wallet: ${issuerWallet.walletId}, ARC-TESTNET address: ${arcAddress}`
+      );
+
+      // 3. Verify issuerAddress matches wallet address on ARC-TESTNET
+      if (dto.issuerAddress.toLowerCase() !== arcAddress.toLowerCase()) {
+        this.logger.warn(
+          `Issuer address mismatch for user ${issuerUserId}. ` +
+          `Expected: ${arcAddress}, Provided: ${dto.issuerAddress}`
+        );
+        throw new BadRequestException(
+          'Issuer address does not match your wallet address on ARC-TESTNET'
+        );
+      }
+
+      // 4. Create product on-chain
       const result = await this.arcContractService.createProduct(
         issuerWallet.walletId,
         dto.issuerAddress,
@@ -69,7 +79,7 @@ export class ProductsService {
 
       this.logger.log(`Product created successfully. TxId: ${result.txId}, ProductId: ${result.productId}`);
 
-      // 4. Fetch the created product from blockchain
+      // 5. Fetch the created product from blockchain
       if (result.productId) {
         return await this.getProduct(result.productId);
       }
