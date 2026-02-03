@@ -13,8 +13,8 @@ export interface UserWallet {
   userId: string;
   walletId: string;
   role: WalletRole;                           // Wallet role
-  blockchain: string;                         // Blockchain network
-  address: string;                            // Wallet address
+  blockchains: string[];                      // Supported blockchain networks
+  addresses: { [blockchain: string]: string }; // Addresses on each blockchain
   state: 'LIVE' | 'FROZEN';                  // Wallet state
   createdAt: string;
 }
@@ -84,12 +84,12 @@ export class UsersService implements OnModuleInit {
    * 
    * @param userId - User ID
    * @param role - Wallet role (issuer/investor/admin)
-   * @param blockchain - Blockchain network (default: ARC-TESTNET)
+   * @param blockchains - Blockchain networks (default: ARC-TESTNET)
    */
   async getOrCreateWallet(
     userId: string, 
     role: WalletRole = WalletRole.INVESTOR,
-    blockchain: string = 'ARC-TESTNET'
+    blockchains: string[] = ['ARC-TESTNET']
   ): Promise<UserWallet> {
     const key = this.getMapKey(userId, role);
     
@@ -102,19 +102,19 @@ export class UsersService implements OnModuleInit {
     }
 
     // Create new wallet
-    this.logger.log(`Creating new ${role} wallet for user ${userId} on ${blockchain}`);
-    const wallet = await this.circleWalletService.createWallet(
+    this.logger.log(`Creating new ${role} wallet for user ${userId} on ${blockchains.join(', ')}`);
+    const walletData = await this.circleWalletService.createWalletWithAddresses(
       `${userId}-${role}`,  // Wallet name includes role
-      [blockchain]
+      blockchains
     );
     
     userWallet = {
       userId,
-      walletId: wallet.id,
+      walletId: walletData.id,
       role,
-      blockchain,
-      address: wallet.address || '',
-      state: wallet.state,
+      blockchains: walletData.blockchains,
+      addresses: walletData.addresses,
+      state: walletData.state,
       createdAt: new Date().toISOString(),
     };
 
@@ -123,7 +123,7 @@ export class UsersService implements OnModuleInit {
     
     this.logger.log(
       `${role} wallet created successfully for user ${userId}. ` +
-      `WalletId: ${wallet.id}, Address: ${wallet.address}`
+      `WalletId: ${walletData.id}, Chains: ${blockchains.join(', ')}, Addresses: ${JSON.stringify(walletData.addresses)}`
     );
     
     return userWallet;
@@ -173,7 +173,8 @@ export class UsersService implements OnModuleInit {
     const normalizedAddress = address.toLowerCase();
     
     for (const wallet of this.userWallets.values()) {
-      if (wallet.address.toLowerCase() === normalizedAddress) {
+      const walletAddresses = Object.values(wallet.addresses);
+      if (walletAddresses.some(addr => addr.toLowerCase() === normalizedAddress)) {
         return wallet;
       }
     }
@@ -200,6 +201,72 @@ export class UsersService implements OnModuleInit {
     const key = this.getMapKey(userId, role);
     const wallet = this.userWallets.get(key);
     return wallet !== null && wallet.state === 'LIVE';
+  }
+
+  /**
+   * Add new blockchain to existing wallet
+   * This creates a new Circle wallet with all blockchains (existing + new)
+   * 
+   * @param userId - User ID
+   * @param role - Wallet role
+   * @param newBlockchains - New blockchains to add
+   */
+  async addBlockchainToWallet(
+    userId: string,
+    role: WalletRole,
+    newBlockchains: string[]
+  ): Promise<UserWallet> {
+    const key = this.getMapKey(userId, role);
+    const existingWallet = this.userWallets.get(key);
+    
+    if (!existingWallet) {
+      throw new NotFoundException(`No ${role} wallet found for user ${userId}`);
+    }
+
+    // Merge existing and new blockchains
+    const allBlockchains = Array.from(new Set([...existingWallet.blockchains, ...newBlockchains]));
+    
+    if (allBlockchains.length === existingWallet.blockchains.length) {
+      this.logger.log(`Blockchains ${newBlockchains.join(', ')} already exist for user ${userId} ${role} wallet`);
+      return existingWallet;
+    }
+
+    // Create new Circle wallet with all blockchains
+    this.logger.log(
+      `Adding blockchains ${newBlockchains.join(', ')} to user ${userId} ${role} wallet. ` +
+      `Total blockchains: ${allBlockchains.join(', ')}`
+    );
+    
+    const walletData = await this.circleWalletService.createWalletWithAddresses(
+      `${userId}-${role}`,
+      allBlockchains
+    );
+    
+    // Update wallet with new data
+    const updatedWallet: UserWallet = {
+      ...existingWallet,
+      walletId: walletData.id,  // New wallet ID
+      blockchains: walletData.blockchains,
+      addresses: walletData.addresses,
+      state: walletData.state,
+    };
+    
+    this.userWallets.set(key, updatedWallet);
+    this.saveWalletsToFile();
+    
+    this.logger.log(
+      `Blockchains added successfully. New WalletId: ${walletData.id}, ` +
+      `Addresses: ${JSON.stringify(walletData.addresses)}`
+    );
+    
+    return updatedWallet;
+  }
+
+  /**
+   * Get address for specific blockchain
+   */
+  getAddressForBlockchain(wallet: UserWallet, blockchain: string): string | undefined {
+    return wallet.addresses[blockchain];
   }
 
   /**

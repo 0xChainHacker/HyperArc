@@ -3,6 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { initiateDeveloperControlledWalletsClient, Blockchain } from '@circle-fin/developer-controlled-wallets';
 import { CircleWallet, CircleTransaction } from './circle.types';
 
+export interface WalletWithAddresses {
+  id: string;
+  blockchains: string[];
+  addresses: { [blockchain: string]: string };
+  state: 'LIVE' | 'FROZEN';
+}
+
 @Injectable()
 export class CircleWalletService {
   private readonly logger = new Logger(CircleWalletService.name);
@@ -73,6 +80,81 @@ export class CircleWalletService {
       };
     } catch (error) {
       this.logger.error(`Failed to create wallet for user ${userId}`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create wallet with addresses on multiple blockchains
+   * Returns wallet with address mapping for each blockchain
+   */
+  async createWalletWithAddresses(
+    userId: string,
+    blockchains: string[]
+  ): Promise<WalletWithAddresses> {
+    this.logger.log(`Creating multi-blockchain wallet for user: ${userId}, blockchains: ${blockchains.join(', ')}`);
+    
+    try {
+      let walletSetId = this.walletSetId;
+      
+      // If no fixed wallet set configured, create a new one
+      if (!walletSetId) {
+        const walletSetResponse = await this.circleDeveloperSdk.createWalletSet({
+          name: `User ${userId} WalletSet`,
+        });
+        walletSetId = walletSetResponse.data?.walletSet?.id;
+        this.logger.log(`WalletSet created: ${walletSetId}`);
+      }
+      
+      // Create wallet in the WalletSet with all blockchains
+      const walletResponse = await this.circleDeveloperSdk.createWallets({
+        accountType: 'SCA',
+        blockchains: blockchains as Blockchain[],
+        count: 1,
+        walletSetId: walletSetId,
+        metadata: [{ name: userId }],
+      });
+      
+      const createdWallets = walletResponse.data?.wallets || [];
+      
+      if (createdWallets.length === 0) {
+        throw new Error('Failed to create wallet: No wallet data returned');
+      }
+      
+      // Build address mapping from all returned wallets
+      // Circle SDK may return multiple wallet objects (one per blockchain)
+      const addresses: { [blockchain: string]: string } = {};
+      const walletId = createdWallets[0].id || '';
+      let state: 'LIVE' | 'FROZEN' = 'LIVE';
+      
+      for (const wallet of createdWallets) {
+        if (wallet.blockchain && wallet.address) {
+          addresses[wallet.blockchain] = wallet.address;
+          state = (wallet.state as 'LIVE' | 'FROZEN') || state;
+        }
+      }
+      
+      // If Circle returns single wallet object for all blockchains
+      if (createdWallets.length === 1 && createdWallets[0].address && blockchains.length === 1) {
+        addresses[blockchains[0]] = createdWallets[0].address;
+      }
+      
+      this.logger.log(
+        `Multi-blockchain wallet created: ${walletId}, ` +
+        `Addresses: ${JSON.stringify(addresses)}`
+      );
+      
+      return {
+        id: walletId,
+        blockchains,
+        addresses,
+        state,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to create multi-blockchain wallet for user ${userId}`,
+        error.response?.data || error.message
+      );
       throw error;
     }
   }

@@ -7,16 +7,18 @@ export class UsersController {
 
   /**
    * Create or get wallet for user with specific role
-   * GET /wallets/:userId?role=issuer
-   * GET /wallets/:userId?role=investor
+   * POST /wallets/:userId?role=issuer&blockchains=ARC-TESTNET,ARB-SEPOLIA
+   * POST /wallets/:userId?role=investor&blockchains=ARC-TESTNET
    */
   @Post(':userId')
   async createWallet(
     @Param('userId') userId: string,
     @Query('role') role: string = 'investor',
+    @Query('blockchains') blockchains?: string,
   ) {
     const walletRole = this.parseRole(role);
-    return this.usersService.getOrCreateWallet(userId, walletRole);
+    const blockchainList = blockchains ? blockchains.split(',').map(b => b.trim()) : ['ARC-TESTNET'];
+    return this.usersService.getOrCreateWallet(userId, walletRole, blockchainList);
   }
 
   /**
@@ -47,6 +49,24 @@ export class UsersController {
   ) {
     const walletRole = this.parseRole(role);
     return this.usersService.getWalletBalance(userId, walletRole);
+  }
+
+  /**
+   * Add blockchains to existing wallet
+   * POST /wallets/:userId/blockchains?role=issuer&blockchains=ARB-SEPOLIA,MATIC-AMOY
+   */
+  @Post(':userId/blockchains')
+  async addBlockchains(
+    @Param('userId') userId: string,
+    @Query('role') role: string = 'investor',
+    @Query('blockchains') blockchains: string,
+  ) {
+    if (!blockchains) {
+      throw new Error('blockchains query parameter is required');
+    }
+    const walletRole = this.parseRole(role);
+    const blockchainList = blockchains.split(',').map(b => b.trim());
+    return this.usersService.addBlockchainToWallet(userId, walletRole, blockchainList);
   }
 
   /**
