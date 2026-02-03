@@ -1,6 +1,6 @@
 export interface CircleWallet {
   id: string;
-  accountType: 'SCA' | 'EOA';
+  accountType: 'EOA' | 'SCA';
   blockchains: string[];
   address?: string;
   state: 'LIVE' | 'FROZEN';
