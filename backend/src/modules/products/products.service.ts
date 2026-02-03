@@ -195,8 +195,9 @@ export class ProductsService {
       );
     }
 
-    // Update product status to approved
+    // Update product status to approved and set active to true
     product.status = 'approved';
+    product.active = true;
     product.approvedAt = new Date().toISOString();
 
     this.saveProduct(product);
