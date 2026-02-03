@@ -16,17 +16,18 @@ export class ArcContractService {
   private readonly circleDeveloperSdk: ReturnType<typeof initiateDeveloperControlledWalletsClient>;
   private readonly ledgerAddress: string;
   private readonly distributorAddress: string;
+  private readonly usdcAddress: string;
 
   constructor(private readonly configService: ConfigService) {
     const rpcUrl = this.configService.get<string>('arc.rpcUrl');
     this.ledgerAddress = this.configService.get<string>('arc.ledgerAddress');
     this.distributorAddress = this.configService.get<string>('arc.distributorAddress');
-    const usdcAddress = this.configService.get<string>('arc.usdcAddress');
+    this.usdcAddress = this.configService.get<string>('arc.usdcAddress');
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.ledgerContract = new ethers.Contract(this.ledgerAddress, LedgerABI as any, this.provider);
     this.distributorContract = new ethers.Contract(this.distributorAddress, DistributorABI as any, this.provider);
-    this.usdcContract = new ethers.Contract(usdcAddress, USDCABI as any, this.provider);
+    this.usdcContract = new ethers.Contract(this.usdcAddress, USDCABI as any, this.provider);
     
     // Initialize Circle SDK for contract execution
     const apiKey = this.configService.get<string>('circle.apiKey');
@@ -88,26 +89,39 @@ export class ArcContractService {
   }
 
   /**
-   * Wait for Circle transaction to reach terminal state
+   * Wait for Circle transaction to reach terminal state.
+   * ✅ MVP 版：以 Circle state 為準，不強制鏈上 receipt（Arc testnet RPC 可能查不到 tx）
    */
-  private async waitForCircleTransaction(txId: string, maxAttempts = 20): Promise<void> {
-    const terminalStates = new Set(['COMPLETE', 'CONFIRMED', 'FAILED', 'DENIED', 'CANCELLED']);
+  private async waitForCircleTransaction(txId: string, maxAttempts = 60): Promise<string | null> {
+    const terminal = new Set(['COMPLETE', 'CONFIRMED', 'FAILED', 'DENIED', 'CANCELLED']);
 
     for (let i = 0; i < maxAttempts; i++) {
       const { data } = await this.circleDeveloperSdk.getTransaction({ id: txId });
-      const state = data?.transaction?.state;
+      const tx = data?.transaction;
 
-      if (state && terminalStates.has(state)) {
-        if (state !== 'COMPLETE' && state !== 'CONFIRMED') {
-          throw new Error(`Transaction failed with state: ${state}`);
+      const state = tx?.state;
+      
+      if (state && terminal.has(state)) {
+        if (state === 'FAILED' || state === 'DENIED' || state === 'CANCELLED') {
+          const reason = (tx as any)?.failureReason || (tx as any)?.error || '';
+          this.logger.error(`Circle transaction ${txId} failed: state=${state} ${reason}`.trim());
+          throw new Error(`Circle transaction ${txId} failed: state=${state} ${reason}`.trim());
         }
-        return;
+
+        const txHash = (tx as any)?.txHash || null;
+        
+        if (txHash) {
+          this.logger.log(`Circle tx confirmed. txId=${txId} txHash=${txHash}`);
+        } else {
+          this.logger.warn(`Circle tx confirmed without txHash. txId=${txId}`);
+        }
+        return txHash;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((r) => setTimeout(r, 3000));
     }
 
-    throw new Error('Transaction timeout');
+    throw new Error(`Circle transaction timeout: ${txId}`);
   }
 
   /**
@@ -248,6 +262,14 @@ export class ArcContractService {
   }
 
   /**
+   * Allowance(owner -> ledger)
+   */
+  async getUSDCAllowance(ownerAddress: string): Promise<string> {
+    const allowance = await this.usdcContract.allowance(ownerAddress, this.ledgerAddress);
+    return allowance.toString();
+  }
+
+  /**
    * Estimate gas for subscribe transaction
    */
   async estimateSubscribeGas(productId: number, amountE6: string): Promise<string> {
@@ -284,5 +306,49 @@ export class ArcContractService {
       this.logger.error(`Failed to wait for transaction ${txHash}`, error.message);
       throw error;
     }
+  }
+
+  /**
+   * Approve USDC spending for ledger contract
+   */
+  async approveUSDC(walletId: string, amountE6: string): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(`Approving USDC -> Ledger amountE6=${amountE6} walletId=${walletId}`);
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.usdcAddress,
+      abiFunctionSignature: 'approve(address,uint256)',
+      abiParameters: [this.ledgerAddress, amountE6],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create USDC approve transaction');
+
+    this.logger.log(`Approve tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
+  }
+
+  /**
+   * Subscribe to a product
+   */
+  async subscribe(walletId: string, productId: number, amountE6: string): Promise<{ txId: string; txHash: string | null }> {
+    this.logger.log(`Subscribing product=${productId} amountE6=${amountE6} walletId=${walletId}`);
+
+    const response = await this.circleDeveloperSdk.createContractExecutionTransaction({
+      walletId,
+      contractAddress: this.ledgerAddress,
+      abiFunctionSignature: 'subscribe(uint256,uint256)',
+      abiParameters: [productId.toString(), amountE6],
+      fee: { type: 'level', config: { feeLevel: 'MEDIUM' } },
+    });
+
+    const txId = response.data?.id;
+    if (!txId) throw new Error('Failed to create subscribe transaction');
+
+    this.logger.log(`Subscribe tx created: ${txId}`);
+    const txHash = await this.waitForCircleTransaction(txId);
+    return { txId, txHash };
   }
 }

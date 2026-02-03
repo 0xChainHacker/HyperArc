@@ -102,52 +102,112 @@ export class PaymentsService {
 
   /**
    * Subscribe to a product (investment flow)
-   * 1. Verify user has sufficient USDC on Arc
-   * 2. Approve USDC to Ledger contract
-   * 3. Call subscribe on Ledger contract
+   * 1) Validate product & price
+   * 2) Compute units & actualAmountE6 (integer multiple of price)
+   * 3) Check USDC balance on Arc
+   * 4) Ensure allowance (approve if needed)
+   * 5) Call subscribe on Ledger
    */
   async subscribe(dto: SubscribeDto) {
     this.logger.log(`User ${dto.userId} subscribing to product ${dto.productId}`);
 
-    // Get or create investor wallet (investors subscribe to products)
+    // 0) Ensure wallet exists & get Arc address
     const userWallet = await this.usersService.getOrCreateWallet(
       dto.userId,
       WalletRole.INVESTOR,
-      ['ARC-TESTNET']
+      ['ARC-TESTNET'],
     );
     const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
-
     if (!arcAddress) {
       throw new BadRequestException(
-        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.',
       );
     }
 
-    // Check USDC balance
-    const balance = await this.arcContractService.getUSDCBalance(arcAddress);
-    this.logger.log(`User USDC balance: ${balance}, required: ${dto.amountE6}`);
-    if (BigInt(balance) < BigInt(dto.amountE6)) {
-      this.logger.error(`Insufficient USDC balance for user ${dto.userId}`);
-      throw new BadRequestException('Insufficient USDC balance');
+    // 1) Fetch product
+    const product = await this.arcContractService.getProduct(dto.productId);
+    if (!product.active) {
+      throw new BadRequestException('Product is not active');
     }
 
-    // In production:
-    // 1. Create approve transaction (user signs via Circle Wallet)
-    // 2. Wait for approval confirmation
-    // 3. Create subscribe transaction
-    // 4. Wait for subscribe confirmation
-    // 5. Return transaction details
+    const priceE6 = BigInt(product.priceE6);
+    const requestedAmountE6 = BigInt(dto.amountE6);
 
-    this.logger.log(`Subscription successfully initiated for product ${dto.productId}, user: ${dto.userId}, amount: ${dto.amountE6}`);
-    
+    if (requestedAmountE6 <= 0n) {
+      throw new BadRequestException('amountE6 must be > 0');
+    }
+    if (priceE6 <= 0n) {
+      throw new BadRequestException('Invalid product price');
+    }
+
+    // 2) Compute units + actualAmountE6
+    const units = requestedAmountE6 / priceE6;
+    if (units <= 0n) {
+      throw new BadRequestException(
+        `Amount too small. Minimum required: ${product.priceE6} (${Number(product.priceE6) / 1_000_000} USDC)`,
+      );
+    }
+    const actualAmountE6 = units * priceE6;
+
+    this.logger.log(
+      `Computed units=${units.toString()} actualAmountE6=${actualAmountE6.toString()} (priceE6=${priceE6.toString()})`,
+    );
+
+    // 3) Check balance
+    const balanceE6 = BigInt(await this.arcContractService.getUSDCBalance(arcAddress));
+    if (balanceE6 < actualAmountE6) {
+      throw new BadRequestException(
+        `Insufficient USDC. Required=${actualAmountE6.toString()} Available=${balanceE6.toString()}`,
+      );
+    }
+
+    // 4) Ensure allowance
+    //    先查 allowance，足夠就跳過 approve（MVP 非常值得做，少一筆 tx = 少一個失敗點）
+    const allowanceE6 = BigInt(
+      await this.arcContractService.getUSDCAllowance(arcAddress),
+    );
+
+    let approveTxId: string | null = null;
+    let approveTxHash: string | null = null;
+    if (allowanceE6 < actualAmountE6) {
+      this.logger.log(
+        `Allowance too low: allowance=${allowanceE6.toString()} need=${actualAmountE6.toString()} => approving...`,
+      );
+      const approveRes = await this.arcContractService.approveUSDC(
+        userWallet.walletId,
+        actualAmountE6.toString(),
+      );
+      approveTxId = approveRes.txId;
+      approveTxHash = approveRes.txHash;
+      this.logger.log(`Approve completed: txId=${approveTxId} txHash=${approveTxHash || 'N/A'}`);
+    } else {
+      this.logger.log(
+        `Allowance sufficient: allowance=${allowanceE6.toString()} need=${actualAmountE6.toString()} => skip approve`,
+      );
+    }
+
+    // 5) Subscribe
+    //    ✅ 建議直接用 actualAmountE6 呼叫 subscribe（避免「非整數倍」帶來 debug 困擾）
+    const subscribeRes = await this.arcContractService.subscribe(
+      userWallet.walletId,
+      dto.productId,
+      actualAmountE6.toString(),
+    );
+
+    this.logger.log(`Subscribe completed: txId=${subscribeRes.txId} txHash=${subscribeRes.txHash || 'N/A'}`);
+
     return {
       success: true,
-      message: 'Subscription transaction created',
+      message: 'Subscription completed',
       productId: dto.productId,
-      amount: dto.amountE6,
-      // In production, return actual transaction hashes
-      approveTxHash: '0x...',
-      subscribeTxHash: '0x...',
+      investor: arcAddress,
+      units: units.toString(),
+      amountPaidE6: actualAmountE6.toString(),
+      pricePerUnitE6: product.priceE6,
+      approveTxId,
+      approveTxHash,
+      subscribeTxId: subscribeRes.txId,
+      subscribeTxHash: subscribeRes.txHash,
     };
   }
 
