@@ -1,0 +1,649 @@
+{
+  "info": {
+    "name": "HyperArc Backend API",
+    "description": "HyperArc Primary Issuance & Settlement Engine APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "user123",
+      "type": "string"
+    },
+    {
+      "key": "issuerUserId",
+      "value": "spv-001",
+      "type": "string"
+    },
+    {
+      "key": "adminUserId",
+      "value": "admin-001",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Wallet Management",
+      "item": [
+        {
+          "name": "Create Investor Wallet (Single Chain)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&blockchains=ARC-TESTNET",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{userId}}"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor",
+                  "description": "investor (default), issuer, or admin"
+                },
+                {
+                  "key": "blockchains",
+                  "value": "ARC-TESTNET",
+                  "description": "Comma-separated list of blockchains (default: ARC-TESTNET)"
+                }
+              ]
+            },
+            "description": "Creates or retrieves an investor wallet for a user on ARC-TESTNET"
+          }
+        },
+        {
+          "name": "Create Investor Wallet (Multi-Chain)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&blockchains=ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{userId}}"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor"
+                },
+                {
+                  "key": "blockchains",
+                  "value": "ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY",
+                  "description": "Multiple blockchains separated by commas"
+                }
+              ]
+            },
+            "description": "Creates wallet with addresses on multiple blockchains"
+          }
+        },
+        {
+          "name": "Create Issuer Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{issuerUserId}}?role=issuer&blockchains=ARC-TESTNET",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{issuerUserId}}"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "issuer"
+                },
+                {
+                  "key": "blockchains",
+                  "value": "ARC-TESTNET",
+                  "description": "Blockchain(s) for issuer wallet"
+                }
+              ]
+            },
+            "description": "Creates or retrieves an issuer/SPV wallet for a user"
+          }
+        },
+        {
+          "name": "Add Blockchains to Existing Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{userId}}/blockchains?role=investor&blockchains=ARB-SEPOLIA,MATIC-AMOY",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{userId}}", "blockchains"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor",
+                  "description": "Wallet role"
+                },
+                {
+                  "key": "blockchains",
+                  "value": "ARB-SEPOLIA,MATIC-AMOY",
+                  "description": "New blockchains to add (comma-separated)"
+                }
+              ]
+            },
+            "description": "Adds new blockchain addresses to existing wallet. Creates new Circle wallet with all chains (existing + new)."
+          }
+        },
+        {
+          "name": "Get All Wallets for User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{userId}}"]
+            },
+            "description": "Returns all wallets (investor, issuer, etc.) for the user"
+          }
+        },
+        {
+          "name": "Get Specific Role Wallet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{userId}}"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor",
+                  "description": "investor, issuer, or admin"
+                }
+              ]
+            },
+            "description": "Get wallet for specific role with all blockchain addresses"
+          }
+        },
+        {
+          "name": "Get Investor Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{userId}}/balance?role=investor",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{userId}}", "balance"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor",
+                  "description": "investor (default), issuer, or admin"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Issuer Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{issuerUserId}}/balance?role=issuer",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{issuerUserId}}", "balance"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "issuer"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Gateway (Cross-chain Funding)",
+      "item": [
+        {
+          "name": "Fund Arc Address",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"sourceChain\": \"ETH\",\n  \"amount\": \"100.00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/gateway/fund-arc",
+              "host": ["{{baseUrl}}"],
+              "path": ["gateway", "fund-arc"]
+            },
+            "description": "Deposit USDC from source chain and withdraw to Arc address"
+          }
+        },
+        {
+          "name": "Get Gateway Transaction Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/gateway/transactions/:txId",
+              "host": ["{{baseUrl}}"],
+              "path": ["gateway", "transactions", ":txId"],
+              "variable": [
+                {
+                  "key": "txId",
+                  "value": "gateway-1234"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Products",
+      "item": [
+        {
+          "name": "Create Product Request (Issuer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Real Estate Fund A\",\n  \"description\": \"Premium commercial real estate in NYC\",\n  \"issuerAddress\": \"0x1234567890abcdef1234567890abcdef12345678\",\n  \"priceE6\": \"10000000\",\n  \"metadataURI\": \"ipfs://...\",\n  \"issuerUserId\": \"{{issuerUserId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["products"]
+            },
+            "description": "Issuer submits a product creation request. Product will be saved with 'pending' status and requires admin approval before deployment to blockchain."
+          }
+        },
+        {
+          "name": "List Products (Approved Only)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["products"]
+            },
+            "description": "List all approved (deployed) products"
+          }
+        },
+        {
+          "name": "Get Pending Products (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "pending"]
+            },
+            "description": "Admin retrieves list of products pending approval"
+          }
+        },
+        {
+          "name": "Approve Product (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"adminUserId\": \"{{adminUserId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}", "approve"]
+            },
+            "description": "Admin approves a pending product and deploys it to blockchain"
+          }
+        },
+        {
+          "name": "Reject Product (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"adminUserId\": \"{{adminUserId}}\",\n  \"reason\": \"Insufficient documentation\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}", "reject"]
+            },
+            "description": "Admin rejects a pending product with optional reason"
+          }
+        },
+        {
+          "name": "Get Product Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Product Total Units",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}/total-units",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}", "total-units"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate Product (Issuer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"issuerUserId\": \"{{issuerUserId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}/deactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}", "deactivate"]
+            },
+            "description": "Issuer deactivates product to prevent new investments. Must be called before refunding investors."
+          }
+        },
+        {
+          "name": "Refund Investor (Issuer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"issuerUserId\": \"{{issuerUserId}}\",\n  \"investorAddress\": \"0xInvestorAddressHere\",\n  \"units\": \"100\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}/refund",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}", "refund"]
+            },
+            "description": "Issuer refunds investor by burning units and returning USDC. Product must be deactivated first."
+          }
+        },
+        {
+          "name": "Withdraw Subscription Funds (Issuer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"issuerUserId\": \"{{issuerUserId}}\",\n  \"amountE6\": \"1000000000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}/withdraw",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "{{productId}}", "withdraw"]
+            },
+            "description": "Issuer withdraws subscription funds (USDC) from the contract treasury."
+          }
+        },
+        {
+          "name": "Get Treasury Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/treasury/balance",
+              "host": ["{{baseUrl}}"],
+              "path": ["products", "treasury", "balance"]
+            },
+            "description": "Get total USDC balance held in the contract treasury."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Investment",
+      "item": [
+        {
+          "name": "Subscribe to Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"productId\": {{productId}},\n  \"amountE6\": \"50000000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/invest/subscribe",
+              "host": ["{{baseUrl}}"],
+              "path": ["invest", "subscribe"]
+            },
+            "description": "Purchase product units with USDC. The system will:\n1. Verify product is active and get price per unit\n2. Calculate units = amountE6 / priceE6 (integer division)\n3. Calculate actual cost = units * priceE6\n4. Check user has sufficient USDC balance\n5. Approve actual cost to Ledger contract\n6. Execute subscribe transaction\n\nExample: If product price is 10 USDC/unit and you send 25 USDC:\n- Units purchased: 2\n- Actual cost: 20 USDC\n- Remaining: 5 USDC stays in your wallet\n\nMinimum amountE6 must be >= product price, otherwise will fail with 'Amount too small' error."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Dividends",
+      "item": [
+        {
+          "name": "Declare Dividend (Issuer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"amountE6\": \"1000000\",\n  \"issuerAddress\": \"0x1234567890abcdef1234567890abcdef12345678\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dividends/declare",
+              "host": ["{{baseUrl}}"],
+              "path": ["dividends", "declare"]
+            },
+            "description": "Issuer declares dividend for a product. Uses issuer's wallet to sign transaction."
+          }
+        },
+        {
+          "name": "Claim Dividend (Investor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"productId\": {{productId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dividends/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["dividends", "claim"]
+            },
+            "description": "Investor claims pending dividend. Uses investor's wallet to sign transaction."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Portfolio",
+      "item": [
+        {
+          "name": "Get User Portfolio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "{{userId}}"]
+            },
+            "description": "Get user holdings, balances, and pending dividends"
+          }
+        },
+        {
+          "name": "Get Product Holding",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/{{userId}}/product/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "{{userId}}", "product", "{{productId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get USDC Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/{{userId}}/usdc-balance?role=investor",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "{{userId}}", "usdc-balance"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor",
+                  "description": "investor (default) or issuer"
+                }
+              ]
+            },
+            "description": "Get user's USDC balance on ARC-TESTNET"
+          }
+        },
+        {
+          "name": "Get USDC Allowance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/{{userId}}/usdc-allowance?role=investor",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "{{userId}}", "usdc-allowance"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor",
+                  "description": "investor (default) or issuer"
+                }
+              ]
+            },
+            "description": "Get USDC allowance approved for the ledger contract"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
