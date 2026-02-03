@@ -34,7 +34,7 @@ export class CircleWalletService {
   /**
    * Create a wallet for a user
    */
-  async createWallet(userId: string, blockchains: string[] = ['ARB-SEPOLIA']): Promise<CircleWallet> {
+  async createWallet(userId: string, blockchains: string[] = ['ARC-TESTNET']): Promise<CircleWallet> {
     this.logger.log(`Creating wallet for user: ${userId}, blockchains: ${blockchains.join(', ')}`);
     try {
       let walletSetId = this.walletSetId;

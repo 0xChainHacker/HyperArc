@@ -84,12 +84,12 @@ export class UsersService implements OnModuleInit {
    * 
    * @param userId - User ID
    * @param role - Wallet role (issuer/investor/admin)
-   * @param blockchain - Blockchain network (default: ARB-SEPOLIA)
+   * @param blockchain - Blockchain network (default: ARC-TESTNET)
    */
   async getOrCreateWallet(
     userId: string, 
     role: WalletRole = WalletRole.INVESTOR,
-    blockchain: string = 'ARB-SEPOLIA'
+    blockchain: string = 'ARC-TESTNET'
   ): Promise<UserWallet> {
     const key = this.getMapKey(userId, role);
     
