@@ -12,7 +12,7 @@
   {
     "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
     "name": "claim",
-    "outputs": [],
+    "outputs": [{ "internalType": "uint256", "name": "claimedE6", "type": "uint256" }],
     "stateMutability": "nonpayable",
     "type": "function"
   },
@@ -21,9 +21,29 @@
       { "internalType": "uint256", "name": "productId", "type": "uint256" },
       { "internalType": "address", "name": "investor", "type": "address" }
     ],
-    "name": "pendingDividend",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "pending",
+    "outputs": [{ "internalType": "uint256", "name": "pendingE6", "type": "uint256" }],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "internalType": "address", "name": "investor", "type": "address" }
+    ],
+    "name": "syncRewardDebt",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "internalType": "uint256", "name": "amountE6", "type": "uint256" }
+    ],
+    "name": "withdrawUnclaimedDividend",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]
