@@ -7,14 +7,13 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   /**
-   * Create a new product
+   * Create a new product (pending admin approval)
    * Requires issuerUserId - the user ID of the SPV/issuer creating the product
-   * The issuer's own wallet will be used to sign the transaction
    */
   @Post()
   async createProduct(
     @Body() dto: CreateProductDto,
-    @Query('issuerUserId') issuerUserId?: string,
+    @Body('issuerUserId') issuerUserId: string,
   ) {
     return this.productsService.createProduct(dto, issuerUserId);
   }
@@ -24,9 +23,31 @@ export class ProductsController {
     return this.productsService.listProducts();
   }
 
+  @Get('pending')
+  async getPendingProducts() {
+    return this.productsService.getPendingProducts();
+  }
+
   @Get(':productId')
   async getProduct(@Param('productId', ParseIntPipe) productId: number) {
     return this.productsService.getProduct(productId);
+  }
+
+  @Post(':productId/approve')
+  async approveProduct(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Body('adminUserId') adminUserId: string,
+  ) {
+    return this.productsService.approveProduct(productId, adminUserId);
+  }
+
+  @Post(':productId/reject')
+  async rejectProduct(
+    @Param('productId', ParseIntPipe) productId: number,
+    @Body('adminUserId') adminUserId: string,
+    @Body('reason') reason?: string,
+  ) {
+    return this.productsService.rejectProduct(productId, adminUserId, reason);
   }
 
   @Get(':productId/total-units')

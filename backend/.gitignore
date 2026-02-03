@@ -4,3 +4,4 @@ dist/
 
 # Ignore wallet data files
 data/user-wallets.json
+data/product/*

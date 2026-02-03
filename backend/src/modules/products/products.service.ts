@@ -8,145 +8,292 @@ export interface Product {
   name: string;
   description: string;
   issuer: string;
+  issuerUserId?: string;
   active: boolean;
   priceE6: string;
   metadataURI: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  approvedAt?: string;
+  txHash?: string;
 }
 
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
+  private readonly productsDir = './data/product';
+  private readonly metadataFile = './data/product/metadata.json';
+  private products: Product[] = [];
+  private nextProductId = 1;
 
   constructor(
     private readonly arcContractService: ArcContractService,
     private readonly usersService: UsersService,
-  ) {}
+  ) {
+    this.loadProducts();
+  }
 
   /**
-   * Create a new economic interest product on-chain
-   * Uses the issuer's own wallet to create and sign the transaction
+   * Load all products from individual JSON files in /data/product/
+   */
+  private loadProducts() {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      // Create directory if not exists
+      if (!fs.existsSync(this.productsDir)) {
+        fs.mkdirSync(this.productsDir, { recursive: true });
+      }
+
+      // Load metadata (nextProductId)
+      if (fs.existsSync(this.metadataFile)) {
+        const metaData = fs.readFileSync(this.metadataFile, 'utf8');
+        const meta = JSON.parse(metaData);
+        this.nextProductId = meta.nextProductId || 1;
+      } else {
+        this.saveMetadata();
+      }
+
+      // Load all product files
+      const files = fs.readdirSync(this.productsDir);
+      this.products = [];
+      
+      for (const file of files) {
+        if (file.startsWith('product-') && file.endsWith('.json')) {
+          const filePath = path.join(this.productsDir, file);
+          const data = fs.readFileSync(filePath, 'utf8');
+          const product = JSON.parse(data);
+          this.products.push(product);
+        }
+      }
+
+      this.logger.log(`Loaded ${this.products.length} products from ${this.productsDir}`);
+    } catch (error) {
+      this.logger.error('Failed to load products from directory', error.message);
+      this.products = [];
+    }
+  }
+
+  /**
+   * Save metadata (nextProductId)
+   */
+  private saveMetadata() {
+    try {
+      const fs = require('fs');
+      const data = JSON.stringify({ nextProductId: this.nextProductId }, null, 2);
+      fs.writeFileSync(this.metadataFile, data, 'utf8');
+    } catch (error) {
+      this.logger.error('Failed to save metadata', error.message);
+    }
+  }
+
+  /**
+   * Save a single product to its own JSON file
+   */
+  private saveProduct(product: Product) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      const fileName = `product-${product.productId}.json`;
+      const filePath = path.join(this.productsDir, fileName);
+      
+      const data = JSON.stringify(product, null, 2);
+      fs.writeFileSync(filePath, data, 'utf8');
+      
+      this.logger.log(`Saved product ${product.productId} to ${fileName}`);
+    } catch (error) {
+      this.logger.error(`Failed to save product ${product.productId}`, error.message);
+    }
+  }
+
+  /**
+   * Create a new product request (pending admin approval)
+   * Issuer submits product for review
    * @param dto - Product creation data
    * @param issuerUserId - User ID of the issuer (SPV/product creator)
    */
-  async createProduct(dto: CreateProductDto, issuerUserId?: string): Promise<Product> {
-    this.logger.log(`Creating product on-chain: ${dto.name}, issuer: ${dto.issuerAddress}, price: ${dto.priceE6}`);
+  async createProduct(dto: CreateProductDto, issuerUserId: string): Promise<Product> {
+    this.logger.log(`Creating product request: ${dto.name}, issuer: ${dto.issuerAddress}, price: ${dto.priceE6}`);
     
     if (!issuerUserId) {
       throw new BadRequestException(
-        'issuerUserId is required. Only the issuer can create products using their own wallet.'
+        'issuerUserId is required. Only the issuer can create products.'
       );
     }
 
     try {
-      // 1. Get existing Issuer wallet
+      // Verify issuer has wallet
       const issuerWallet = await this.usersService.getUserWallet(
         issuerUserId,
         WalletRole.ISSUER
       );
 
-      // 2. Get address on ARC-TESTNET blockchain
       const arcAddress = this.usersService.getAddressForBlockchain(issuerWallet, 'ARC-TESTNET');
       
       if (!arcAddress) {
         throw new BadRequestException(
-          'Issuer wallet does not have an address on ARC-TESTNET. ' +
-          'Please create wallet with ARC-TESTNET blockchain.'
+          'Issuer wallet does not have an address on ARC-TESTNET.'
         );
       }
 
-      this.logger.log(
-        `Using issuer wallet: ${issuerWallet.walletId}, ARC-TESTNET address: ${arcAddress}`
-      );
-
-      // 3. Verify issuerAddress matches wallet address on ARC-TESTNET
+      // Verify issuer address matches
       if (dto.issuerAddress.toLowerCase() !== arcAddress.toLowerCase()) {
-        this.logger.warn(
-          `Issuer address mismatch for user ${issuerUserId}. ` +
-          `Expected: ${arcAddress}, Provided: ${dto.issuerAddress}`
-        );
         throw new BadRequestException(
           'Issuer address does not match your wallet address on ARC-TESTNET'
         );
       }
 
-      // 4. Create product on-chain
-      const result = await this.arcContractService.createProduct(
-        issuerWallet.walletId,
-        dto.issuerAddress,
-        dto.priceE6,
-        dto.metadataURI || '',
-      );
-
-      this.logger.log(`Product created successfully. TxId: ${result.txId}, ProductId: ${result.productId}`);
-
-      // 5. Fetch the created product from blockchain
-      if (result.productId) {
-        return await this.getProduct(result.productId);
-      }
-
-      // Fallback return
-      return {
-        productId: result.productId || 0,
+      // Create product in pending status
+      const product: Product = {
+        productId: this.nextProductId++,
         name: dto.name,
         description: dto.description,
         issuer: dto.issuerAddress,
-        active: true,
+        issuerUserId,
+        active: false,
         priceE6: dto.priceE6,
         metadataURI: dto.metadataURI || '',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
       };
+
+      this.products.push(product);
+      this.saveProduct(product);
+      this.saveMetadata();
+
+      this.logger.log(
+        `Product request created successfully. ` +
+        `ProductId: ${product.productId}, Status: pending, awaiting admin approval`
+      );
+
+      return product;
     } catch (error) {
-      this.logger.error('Failed to create product on-chain', error.message);
+      this.logger.error('Failed to create product request', error.message);
       throw new BadRequestException(
-        `Failed to create product on-chain: ${error.message}`
+        `Failed to create product request: ${error.message}`
       );
     }
   }
 
   /**
-   * Get all products from blockchain
+   * Approve and deploy product to blockchain (Admin only)
    */
-  async listProducts(): Promise<Product[]> {
-    this.logger.log('Fetching products from blockchain');
+  async approveProduct(productId: number, adminUserId: string): Promise<Product> {
+    this.logger.log(`Admin ${adminUserId} approving product ${productId}`);
+
+    const product = this.products.find((p) => p.productId === productId);
+    if (!product) {
+      throw new BadRequestException(`Product ${productId} not found`);
+    }
+
+    if (product.status !== 'pending') {
+      throw new BadRequestException(
+        `Product ${productId} is already ${product.status}. Can only approve pending products.`
+      );
+    }
+
     try {
-      const onChainProducts = await this.arcContractService.listProducts();
-      
-      return onChainProducts.map((p) => ({
-        productId: p.productId,
-        name: `Product ${p.productId}`, // TODO: fetch from metadataURI (IPFS)
-        description: p.metadataURI || 'No description available',
-        issuer: p.issuer,
-        active: p.active,
-        priceE6: p.priceE6,
-        metadataURI: p.metadataURI,
-      }));
+      // Get issuer wallet to deploy on-chain
+      const issuerWallet = await this.usersService.getUserWallet(
+        product.issuerUserId,
+        WalletRole.ISSUER
+      );
+
+      // Deploy to blockchain
+      const result = await this.arcContractService.createProduct(
+        issuerWallet.walletId,
+        product.issuer,
+        product.priceE6,
+        product.metadataURI,
+      );
+
+      // Update product status
+      product.status = 'approved';
+      product.active = true;
+      product.approvedAt = new Date().toISOString();
+      product.txHash = result.txId;
+
+      this.saveProduct(product);
+
+      this.logger.log(
+        `Product ${productId} approved and deployed on-chain. TxHash: ${result.txId}`
+      );
+
+      return product;
     } catch (error) {
-      this.logger.error('Failed to list products from blockchain', error.message);
-      return [];
+      this.logger.error(`Failed to approve product ${productId}`, error.message);
+      throw new BadRequestException(
+        `Failed to approve product: ${error.message}`
+      );
     }
   }
 
   /**
-   * Get product by ID from blockchain
+   * Reject product (Admin only)
+   */
+  async rejectProduct(productId: number, adminUserId: string, reason?: string): Promise<Product> {
+    this.logger.log(`Admin ${adminUserId} rejecting product ${productId}`);
+
+    const product = this.products.find((p) => p.productId === productId);
+    if (!product) {
+      throw new BadRequestException(`Product ${productId} not found`);
+    }
+
+    if (product.status !== 'pending') {
+      throw new BadRequestException(
+        `Product ${productId} is already ${product.status}. Can only reject pending products.`
+      );
+    }
+
+    product.status = 'rejected';
+    this.saveProduct(product);
+
+    this.logger.log(`Product ${productId} rejected${reason ? `: ${reason}` : ''}`);
+
+    return product;
+  }
+
+  /**
+   * Get pending products (for admin review)
+   */
+  async getPendingProducts(): Promise<Product[]> {
+    return this.products.filter((p) => p.status === 'pending');
+  }
+
+  /**
+   * Get all approved products
+   */
+  async listProducts(): Promise<Product[]> {
+    return this.products.filter((p) => p.status === 'approved');
+  }
+
+  /**
+   * Get product by ID
+   * For approved products, fetches latest data from blockchain
    */
   async getProduct(productId: number): Promise<Product> {
     this.logger.log(`Fetching product: ${productId}`);
     
-    try {
-      const onChainProduct = await this.arcContractService.getProduct(productId);
-      
-      return {
-        productId,
-        name: `Product ${productId}`, // TODO: fetch from metadataURI
-        description: onChainProduct.metadataURI || 'No description available',
-        issuer: onChainProduct.issuer,
-        active: onChainProduct.active,
-        priceE6: onChainProduct.priceE6,
-        metadataURI: onChainProduct.metadataURI,
-      };
-    } catch (error) {
-      this.logger.error(`Failed to fetch product ${productId} from blockchain`, error.message);
-      throw new BadRequestException(`Product ${productId} not found on blockchain`);
+    const product = this.products.find((p) => p.productId === productId);
+    if (!product) {
+      throw new BadRequestException(`Product ${productId} not found`);
     }
+
+    // For approved products, fetch latest on-chain data
+    if (product.status === 'approved') {
+      try {
+        const onChainProduct = await this.arcContractService.getProduct(productId);
+        product.active = onChainProduct.active;
+        product.priceE6 = onChainProduct.priceE6;
+        this.logger.log(`Updated product ${productId} with on-chain data`);
+      } catch (error) {
+        this.logger.warn(`Could not fetch on-chain data for product ${productId}: ${error.message}`);
+      }
+    }
+
+    return product;
   }
 
   /**
