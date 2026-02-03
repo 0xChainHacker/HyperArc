@@ -239,7 +239,7 @@ export class ArcContractService {
    */
   async getPendingDividend(productId: number, investorAddress: string): Promise<string> {
     try {
-      const pending = await this.distributorContract.pendingDividend(productId, investorAddress);
+      const pending = await this.distributorContract.pending(productId, investorAddress);
       return pending.toString();
     } catch (error) {
       this.logger.error(`Failed to get pending dividend for product ${productId}`, error.message);
