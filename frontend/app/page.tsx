@@ -24,6 +24,13 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
+  // Wallet connection state
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [connectingWallet, setConnectingWallet] = useState(false);
+  const [metamaskAddress, setMetamaskAddress] = useState<string | null>(null);
+  const [circleWalletAddress, setCircleWalletAddress] = useState<string | null>(null);
+  
   // Create product form state
   const [newProduct, setNewProduct] = useState({
     name: '',
@@ -150,6 +157,88 @@ export default function Home() {
     }
   };
 
+  const handleConnectWallet = async () => {
+    setConnectingWallet(true);
+    try {
+      // Check if MetaMask is installed
+      if (typeof window.ethereum === 'undefined') {
+        throw new Error('MetaMask is not installed. Please install MetaMask to continue.');
+      }
+
+      // Request account access
+      const accounts = await window.ethereum.request({ 
+        method: 'eth_requestAccounts' 
+      });
+      
+      if (accounts.length === 0) {
+        throw new Error('No accounts found. Please unlock MetaMask.');
+      }
+
+      const metamaskAddr = accounts[0];
+      setMetamaskAddress(metamaskAddr);
+      setWalletAddress(metamaskAddr);
+      setWalletConnected(true);
+
+      // Auto-create/get Circle wallet after MetaMask connection
+      await handleGetCircleWallet();
+      
+      alert(`MetaMask connected!\nAddress: ${metamaskAddr}`);
+    } catch (err) {
+      console.error('MetaMask connection error:', err);
+      alert(err instanceof Error ? err.message : 'Failed to connect MetaMask');
+    } finally {
+      setConnectingWallet(false);
+    }
+  };
+
+  const handleGetCircleWallet = async () => {
+    try {
+      const currentUserId = userRole === 'investor' ? userId : issuerUserId;
+      
+      // Try to get existing wallet first
+      let wallet: any;
+      try {
+        wallet = await api.getWallet(currentUserId, userRole);
+        console.log('Existing Circle wallet:', wallet);
+      } catch (err) {
+        // If wallet doesn't exist, create one
+        console.log('Creating new Circle wallet for user:', currentUserId);
+        wallet = await api.createWallet(currentUserId, userRole, 'ARC-TESTNET');
+        console.log('Created Circle wallet:', wallet);
+      }
+      
+      // Handle both single wallet and array of wallets
+      const walletData = Array.isArray(wallet) 
+        ? wallet.find((w: any) => w.role === userRole) 
+        : wallet;
+      
+      console.log('Circle wallet data:', walletData);
+      
+      // Addresses is an object like { 'ARC-TESTNET': '0x...' }
+      if (walletData?.addresses) {
+        const addressValues = Object.values(walletData.addresses);
+        if (addressValues.length > 0) {
+          const address = addressValues[0] as string;
+          setCircleWalletAddress(address);
+          
+          // Reload data to get updated balance
+          await loadData();
+          
+          console.log('Circle wallet address:', address);
+        }
+      }
+    } catch (err) {
+      console.error('Circle wallet error:', err);
+    }
+  };
+
+  const handleDisconnectWallet = () => {
+    setWalletConnected(false);
+    setWalletAddress(null);
+    setMetamaskAddress(null);
+    setCircleWalletAddress(null);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       {/* Header */}
@@ -195,10 +284,37 @@ export default function Home() {
                 <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                   {loading ? '...' : `$${(walletBalance || 0).toFixed(2)} USDC`}
                 </p>
+                {walletConnected && (
+                  <div className="mt-1 space-y-1">
+                    {metamaskAddress && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                        🦊 {metamaskAddress.slice(0, 6)}...{metamaskAddress.slice(-4)}
+                      </p>
+                    )}
+                    {circleWalletAddress && (
+                      <p className="text-xs text-blue-600 dark:text-blue-400 font-mono">
+                        ⭕ {circleWalletAddress.slice(0, 6)}...{circleWalletAddress.slice(-4)}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
-                Connect Wallet
-              </button>
+              {walletConnected ? (
+                <button 
+                  onClick={handleDisconnectWallet}
+                  className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium"
+                >
+                  Disconnect
+                </button>
+              ) : (
+                <button 
+                  onClick={handleConnectWallet}
+                  disabled={connectingWallet}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
+                >
+                  {connectingWallet ? 'Connecting...' : 'Connect MetaMask'}
+                </button>
+              )}
             </div>
           </div>
         </div>
