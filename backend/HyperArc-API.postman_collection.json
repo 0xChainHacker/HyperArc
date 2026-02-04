@@ -29,9 +29,149 @@
       "key": "productId",
       "value": "1",
       "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "nonce",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "walletAddress",
+      "value": "0x1234567890123456789012345678901234567890",
+      "type": "string"
     }
   ],
   "item": [
+    {
+      "name": "0. Authentication (SIWE)",
+      "item": [
+        {
+          "name": "Get Nonce",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"nonce\", jsonData.nonce);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/nonce",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "nonce"]
+            },
+            "description": "Get a nonce for SIWE signature. Valid for 5 minutes."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify SIWE and Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"accessToken\", jsonData.accessToken);",
+                  "pm.collectionVariables.set(\"userId\", jsonData.userId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"localhost:3001 wants you to sign in with your Ethereum account:\\n{{walletAddress}}\\n\\nSign in with Ethereum to HyperArc\\n\\nURI: http://localhost:3001\\nVersion: 1\\nChain ID: 5042002\\nNonce: {{nonce}}\\nIssued At: 2026-02-05T10:30:00.000Z\",\n  \"signature\": \"0x...\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "verify"]
+            },
+            "description": "Verify SIWE signature and obtain JWT token.\n\n**Note**: You need to:\n1. Call GET /auth/nonce to get a nonce\n2. Use frontend (siwe library) to create SIWE message\n3. Sign the message with MetaMask\n4. Submit the complete message and signature to this endpoint\n\n**Example message format**:\n```\nlocalhost:3001 wants you to sign in with your Ethereum account:\n0x1234567890123456789012345678901234567890\n\nSign in with Ethereum to HyperArc\n\nURI: http://localhost:3001\nVersion: 1\nChain ID: 5042002\nNonce: <nonce-from-step-1>\nIssued At: <current-ISO-timestamp>\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Link External Wallet",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"localhost:3001 wants you to sign in with your Ethereum account:\\n0x1234567890123456789012345678901234567890\\n\\nLink this wallet to your HyperArc account\\n\\nURI: http://localhost:3001\\nVersion: 1\\nChain ID: 5042002\\nNonce: {{nonce}}\\nIssued At: 2026-02-05T10:35:00.000Z\",\n  \"signature\": \"0x...\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/link-wallet",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "link-wallet"]
+            },
+            "description": "Link an external wallet (MetaMask) to existing account. Requires valid JWT token from prior login.\n\n**Flow**:\n1. User logs in with Circle wallet to get JWT\n2. Sign SIWE message with new MetaMask address\n3. Call this endpoint to link new wallet\n4. Can then login with either wallet address to access same account"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Protected Endpoint",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/example/protected",
+              "host": ["{{baseUrl}}"],
+              "path": ["example", "protected"]
+            },
+            "description": "Test protected endpoint. Requires valid JWT token in Authorization header."
+          },
+          "response": []
+        }
+      ],
+      "description": "Ethereum wallet authentication based on EIP-4361 (SIWE)"
+    },
     {
       "name": "1. Wallet Management",
       "item": [
