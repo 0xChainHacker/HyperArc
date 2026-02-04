@@ -1,67 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-
-// Mock data for demonstration
-const mockProducts = [
-  {
-    id: 1,
-    name: 'Real Estate Fund A',
-    description: 'Premium commercial real estate in NYC',
-    issuer: '0x1234...5678',
-    price: 10.00,
-    totalUnits: 1000,
-    soldUnits: 250,
-    active: true,
-    apy: '8.5%',
-    category: 'Real Estate',
-    status: 'approved'
-  },
-  {
-    id: 2,
-    name: 'Tech Startup Portfolio',
-    description: 'Diversified early-stage tech investments',
-    issuer: '0xabcd...ef01',
-    price: 25.00,
-    totalUnits: 500,
-    soldUnits: 180,
-    active: true,
-    apy: '12.3%',
-    category: 'Venture Capital',
-    status: 'approved'
-  },
-  {
-    id: 3,
-    name: 'Green Energy Fund',
-    description: 'Sustainable energy infrastructure projects',
-    issuer: '0x9876...4321',
-    price: 50.00,
-    totalUnits: 200,
-    soldUnits: 50,
-    active: true,
-    apy: '6.8%',
-    category: 'Energy',
-    status: 'pending'
-  }
-];
-
-const mockInvestorPortfolio = [
-  { productId: 1, productName: 'Real Estate Fund A', units: 5, pendingDividend: 0.50, invested: 50.00 },
-  { productId: 2, productName: 'Tech Startup Portfolio', units: 2, pendingDividend: 1.20, invested: 50.00 }
-];
-
-const mockIssuerProducts = [
-  { 
-    id: 1, 
-    name: 'Real Estate Fund A', 
-    totalUnits: 1000, 
-    soldUnits: 250, 
-    totalRaised: 2500.00,
-    active: true,
-    pendingWithdrawal: 2500.00,
-    status: 'approved'
-  }
-];
+import { useState, useEffect } from 'react';
+import { api, Product, PortfolioHolding } from './api/client';
 
 type UserRole = 'investor' | 'issuer';
 type InvestorTab = 'products' | 'portfolio';
@@ -71,7 +11,18 @@ export default function Home() {
   const [userRole, setUserRole] = useState<UserRole>('investor');
   const [investorTab, setInvestorTab] = useState<InvestorTab>('products');
   const [issuerTab, setIssuerTab] = useState<IssuerTab>('my-products');
-  const [walletBalance] = useState(1250.50);
+  
+  // User ID - in production, this would come from authentication
+  const [userId] = useState('user123');
+  const [issuerUserId] = useState('spv-001');
+  
+  // State for API data
+  const [products, setProducts] = useState<Product[]>([]);
+  const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioHolding[]>([]);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Create product form state
   const [newProduct, setNewProduct] = useState({
@@ -80,6 +31,124 @@ export default function Home() {
     price: '',
     category: 'Real Estate'
   });
+
+  // Load data on component mount and role change
+  useEffect(() => {
+    loadData();
+  }, [userRole]);
+
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Load wallet balance
+      const currentUserId = userRole === 'investor' ? userId : issuerUserId;
+      const balanceData = await api.getWalletBalance(currentUserId, userRole);
+      setWalletBalance(balanceData?.balanceUSD || 0);
+
+      if (userRole === 'investor') {
+        // Load products and portfolio for investors
+        const productsData = await api.listProducts();
+        setProducts(productsData);
+        
+        const portfolioData = await api.getUserPortfolio(userId);
+        setPortfolio(portfolioData.holdings);
+      } else {
+        // Load products and pending products for issuers
+        const productsData = await api.listProducts();
+        setProducts(productsData);
+        
+        const pendingData = await api.getPendingProducts();
+        setPendingProducts(pendingData);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+      console.error('Error loading data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubscribe = async (productId: number, amount: number) => {
+    try {
+      const amountE6 = (amount * 1_000_000).toString();
+      await api.subscribe(userId, productId, amountE6);
+      alert('Subscription successful!');
+      loadData(); // Reload data
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to subscribe');
+    }
+  };
+
+  const handleClaimDividend = async (productId: number) => {
+    try {
+      await api.claimDividend(userId, productId);
+      alert('Dividend claimed successfully!');
+      loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to claim dividend');
+    }
+  };
+
+  const handleDeclareDividend = async (productId: number, amount: number) => {
+    try {
+      const amountE6 = (amount * 1_000_000).toString();
+      await api.declareDividend(issuerUserId, productId, amountE6);
+      alert('Dividend declared successfully!');
+      loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to declare dividend');
+    }
+  };
+
+  const handleDeactivateProduct = async (productId: number) => {
+    if (!confirm('Are you sure you want to deactivate this product?')) return;
+    try {
+      await api.deactivateProduct(productId, issuerUserId);
+      alert('Product deactivated successfully!');
+      loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to deactivate product');
+    }
+  };
+
+  const handleWithdrawFunds = async (productId: number, amount: number) => {
+    try {
+      const amountE6 = (amount * 1_000_000).toString();
+      await api.withdrawFunds(productId, issuerUserId, amountE6);
+      alert('Funds withdrawn successfully!');
+      loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to withdraw funds');
+    }
+  };
+
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const priceE6 = (parseFloat(newProduct.price) * 1_000_000).toString();
+      
+      // Get issuer wallet address
+      const wallet = await api.getWallet(issuerUserId, 'issuer') as any;
+      const issuerAddress = wallet.addresses?.[0]?.address || '0x0000000000000000000000000000000000000000';
+      
+      await api.createProduct({
+        name: newProduct.name,
+        description: newProduct.description,
+        issuerAddress,
+        priceE6,
+        metadataURI: `ipfs://metadata-${Date.now()}`, // Placeholder
+        issuerUserId,
+      });
+      
+      alert('Product created and submitted for approval!');
+      setNewProduct({ name: '', description: '', price: '', category: 'Real Estate' });
+      loadData();
+      setIssuerTab('pending');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to create product');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -124,7 +193,7 @@ export default function Home() {
               <div className="text-right">
                 <p className="text-xs text-slate-500 dark:text-slate-400">Wallet Balance</p>
                 <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                  ${walletBalance.toFixed(2)} USDC
+                  {loading ? '...' : `$${(walletBalance || 0).toFixed(2)} USDC`}
                 </p>
               </div>
               <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
@@ -137,6 +206,28 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center items-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+            <p className="text-red-800 dark:text-red-200">{error}</p>
+            <button 
+              onClick={loadData}
+              className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!loading && (
+          <>
         {/* Investor View */}
         {userRole === 'investor' && (
           <>
@@ -167,18 +258,20 @@ export default function Home() {
             {/* Investor Products Tab */}
             {investorTab === 'products' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {mockProducts.filter(p => p.status === 'approved').map((product) => (
+                {products.filter(p => p.status === 'approved').map((product) => (
                   <div
                     key={product.id}
                     className="bg-white dark:bg-slate-800 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-slate-200 dark:border-slate-700"
                   >
                 <div className="flex justify-between items-start mb-4">
                   <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
-                    {product.category}
+                    {product.category || 'Investment'}
                   </span>
-                  <span className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {product.apy}
-                  </span>
+                  {product.apy && (
+                    <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {product.apy}
+                    </span>
+                  )}
                 </div>
                 
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
@@ -192,35 +285,50 @@ export default function Home() {
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500 dark:text-slate-400">Price per Unit</span>
                     <span className="font-semibold text-slate-900 dark:text-slate-100">
-                      ${product.price.toFixed(2)} USDC
+                      ${(product.price || 0).toFixed(2)} USDC
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500 dark:text-slate-400">Available</span>
-                    <span className="font-semibold text-slate-900 dark:text-slate-100">
-                      {product.totalUnits - product.soldUnits}/{product.totalUnits} units
-                    </span>
-                  </div>
+                  {product.totalUnits && product.soldUnits !== undefined && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500 dark:text-slate-400">Available</span>
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {product.totalUnits - product.soldUnits}/{product.totalUnits} units
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500 dark:text-slate-400">Issuer</span>
                     <span className="font-mono text-xs text-slate-900 dark:text-slate-100">
-                      {product.issuer}
+                      {product.issuerAddress?.slice(0, 6)}...{product.issuerAddress?.slice(-4)}
                     </span>
                   </div>
                 </div>
 
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-4">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full"
-                    style={{ width: `${(product.soldUnits / product.totalUnits) * 100}%` }}
-                  />
-                </div>
+                {product.totalUnits && product.soldUnits !== undefined && (
+                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-4">
+                    <div
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full"
+                      style={{ width: `${(product.soldUnits / product.totalUnits) * 100}%` }}
+                    />
+                  </div>
+                )}
 
-                    <button className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all">
+                    <button 
+                      onClick={() => {
+                        const amount = prompt('Enter amount in USDC to invest:');
+                        if (amount) handleSubscribe(product.id, parseFloat(amount));
+                      }}
+                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all"
+                    >
                       Subscribe Now
                     </button>
                   </div>
                 ))}
+                {products.filter(p => p.status === 'approved').length === 0 && (
+                  <div className="col-span-full text-center py-12 text-slate-500 dark:text-slate-400">
+                    No products available yet
+                  </div>
+                )}
               </div>
             )}
 
@@ -232,19 +340,19 @@ export default function Home() {
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Total Invested</p>
                 <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                  ${mockInvestorPortfolio.reduce((sum, item) => sum + item.invested, 0).toFixed(2)}
+                  ${Number(portfolio.reduce((sum, item) => sum + Number(item.invested || 0), 0)).toFixed(2)}
                 </p>
               </div>
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Pending Dividends</p>
                 <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                  ${mockInvestorPortfolio.reduce((sum, item) => sum + item.pendingDividend, 0).toFixed(2)}
+                  ${Number(portfolio.reduce((sum, item) => sum + Number(item.pendingDividend || 0), 0)).toFixed(2)}
                 </p>
               </div>
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Holdings</p>
                 <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                  {mockInvestorPortfolio.reduce((sum, item) => sum + item.units, 0)} units
+                  {portfolio.reduce((sum, item) => sum + Number(item.units || 0), 0)} units
                 </p>
               </div>
             </div>
@@ -255,7 +363,7 @@ export default function Home() {
                 <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">My Holdings</h2>
               </div>
               <div className="divide-y divide-slate-200 dark:divide-slate-700">
-                {mockInvestorPortfolio.map((holding) => (
+                {portfolio.map((holding) => (
                   <div key={holding.productId} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                     <div className="flex justify-between items-start mb-4">
                       <div>
@@ -266,7 +374,11 @@ export default function Home() {
                           Product ID: #{holding.productId}
                         </p>
                       </div>
-                      <button className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                      <button 
+                        onClick={() => handleClaimDividend(holding.productId)}
+                        disabled={holding.pendingDividend === 0}
+                        className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+                      >
                         Claim Dividend
                       </button>
                     </div>
@@ -274,24 +386,29 @@ export default function Home() {
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">Invested</p>
                         <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                          ${holding.invested.toFixed(2)}
+                          ${Number(holding.invested || 0).toFixed(2)}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">Units Owned</p>
                         <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                          {holding.units}
+                          {holding.units || 0}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">Pending Dividend</p>
                         <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                          ${holding.pendingDividend.toFixed(2)}
+                          ${Number(holding.pendingDividend || 0).toFixed(2)}
                         </p>
                       </div>
                     </div>
                   </div>
                 ))}
+                {portfolio.length === 0 && (
+                  <div className="p-12 text-center text-slate-500 dark:text-slate-400">
+                    No holdings yet. Start investing in products!
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -339,7 +456,7 @@ export default function Home() {
             {/* My Products Tab */}
             {issuerTab === 'my-products' && (
               <div className="space-y-6">
-                {mockIssuerProducts.map((product) => (
+                {products.filter(p => p.status === 'approved').map((product) => (
                   <div key={product.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
                     <div className="p-6 border-b border-slate-200 dark:border-slate-700">
                       <div className="flex justify-between items-start mb-4">
@@ -356,11 +473,20 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="flex gap-2">
-                          <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                          <button 
+                            onClick={() => {
+                              const amount = prompt('Enter dividend amount in USDC:');
+                              if (amount) handleDeclareDividend(product.id, parseFloat(amount));
+                            }}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                          >
                             Declare Dividend
                           </button>
                           {product.active ? (
-                            <button className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors">
+                            <button 
+                              onClick={() => handleDeactivateProduct(product.id)}
+                              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
                               Deactivate
                             </button>
                           ) : (
@@ -375,37 +501,48 @@ export default function Home() {
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Units</p>
                           <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                            {product.totalUnits}
+                            {product.totalUnits || 0}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Sold Units</p>
                           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                            {product.soldUnits}
+                            {product.soldUnits || 0}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Raised</p>
                           <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                            ${product.totalRaised.toFixed(2)}
+                            ${((product.soldUnits || 0) * (product.price || 0)).toFixed(2)}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Available to Withdraw</p>
                           <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                            ${product.pendingWithdrawal.toFixed(2)}
+                            ${((product.soldUnits || 0) * (product.price || 0)).toFixed(2)}
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="p-6">
-                      <button className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium transition-all">
+                      <button 
+                        onClick={() => {
+                          const amount = prompt('Enter amount to withdraw in USDC:');
+                          if (amount) handleWithdrawFunds(product.id, parseFloat(amount));
+                        }}
+                        className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium transition-all"
+                      >
                         Withdraw Subscription Funds
                       </button>
                     </div>
                   </div>
                 ))}
+                {products.filter(p => p.status === 'approved').length === 0 && (
+                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                    No products created yet
+                  </div>
+                )}
               </div>
             )}
 
@@ -417,7 +554,7 @@ export default function Home() {
                     Create New Product
                   </h2>
 
-                  <form className="space-y-6">
+                  <form onSubmit={handleCreateProduct} className="space-y-6">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                         Product Name
@@ -428,6 +565,7 @@ export default function Home() {
                         onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
                         className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                         placeholder="e.g., Real Estate Fund A"
+                        required
                       />
                     </div>
 
@@ -441,6 +579,7 @@ export default function Home() {
                         rows={4}
                         className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                         placeholder="Describe your investment product..."
+                        required
                       />
                     </div>
 
@@ -471,6 +610,7 @@ export default function Home() {
                         className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                         placeholder="10.00"
                         step="0.01"
+                        required
                       />
                     </div>
 
@@ -492,7 +632,7 @@ export default function Home() {
             {/* Pending Products Tab */}
             {issuerTab === 'pending' && (
               <div className="space-y-4">
-                {mockProducts.filter(p => p.status === 'pending').map((product) => (
+                {pendingProducts.map((product) => (
                   <div key={product.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
@@ -511,13 +651,13 @@ export default function Home() {
                           <div>
                             <span className="text-slate-500 dark:text-slate-400">Price: </span>
                             <span className="font-semibold text-slate-900 dark:text-slate-100">
-                              ${product.price.toFixed(2)} USDC
+                              ${(product.price || 0).toFixed(2)} USDC
                             </span>
                           </div>
                           <div>
                             <span className="text-slate-500 dark:text-slate-400">Category: </span>
                             <span className="font-semibold text-slate-900 dark:text-slate-100">
-                              {product.category}
+                              {product.category || 'General'}
                             </span>
                           </div>
                         </div>
@@ -528,7 +668,7 @@ export default function Home() {
                     </div>
                   </div>
                 ))}
-                {mockProducts.filter(p => p.status === 'pending').length === 0 && (
+                {pendingProducts.length === 0 && (
                   <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                     No pending products
                   </div>
@@ -536,6 +676,8 @@ export default function Home() {
               </div>
             )}
           </>
+        )}
+        </>
         )}
       </main>
 
