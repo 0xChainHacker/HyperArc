@@ -11,12 +11,16 @@ export enum WalletRole {
 
 export interface UserWallet {
   userId: string;
+  email?: string;
   walletId: string;
   role: WalletRole;                           // Wallet role
-  blockchains: string[];                      // Supported blockchain networks
-  addresses: { [blockchain: string]: string }; // Addresses on each blockchain
+  blockchains?: string[];                     // Supported blockchain networks
+  circleWallet: { [blockchain: string]: string }; // Circle wallet addresses on each blockchain
+  externalWallets?: string[];                 // External wallet addresses (array of strings)
+  addresses?: { [blockchain: string]: string }; // Legacy: Addresses on each blockchain
   state: 'LIVE' | 'FROZEN';                  // Wallet state
   createdAt: string;
+  lastLogin?: string;
 }
 
 @Injectable()
@@ -113,7 +117,9 @@ export class UsersService implements OnModuleInit {
       walletId: walletData.id,
       role,
       blockchains: walletData.blockchains,
-      addresses: walletData.addresses,
+      circleWallet: walletData.addresses,  // Use circleWallet for new format
+      addresses: walletData.addresses,      // Keep legacy field for compatibility
+      externalWallets: [],                  // Initialize empty external wallets array
       state: walletData.state,
       createdAt: new Date().toISOString(),
     };
@@ -173,8 +179,14 @@ export class UsersService implements OnModuleInit {
     const normalizedAddress = address.toLowerCase();
     
     for (const wallet of this.userWallets.values()) {
-      const walletAddresses = Object.values(wallet.addresses);
-      if (walletAddresses.some(addr => addr.toLowerCase() === normalizedAddress)) {
+      // Check Circle wallet addresses
+      const circleAddresses = Object.values(wallet.circleWallet || wallet.addresses || {});
+      if (circleAddresses.some(addr => addr.toLowerCase() === normalizedAddress)) {
+        return wallet;
+      }
+      
+      // Check external wallets
+      if (wallet.externalWallets?.some(addr => addr.toLowerCase() === normalizedAddress)) {
         return wallet;
       }
     }
@@ -266,7 +278,8 @@ export class UsersService implements OnModuleInit {
    * Get address for specific blockchain
    */
   getAddressForBlockchain(wallet: UserWallet, blockchain: string): string | undefined {
-    return wallet.addresses[blockchain];
+    // Try circleWallet first (new format), then addresses (legacy format)
+    return wallet.circleWallet?.[blockchain] || wallet.addresses?.[blockchain];
   }
 
   /**

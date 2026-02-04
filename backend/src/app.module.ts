@@ -10,6 +10,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ProductsModule } from './modules/products/products.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { PortfolioModule } from './modules/portfolio/portfolio.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PortfolioModule } from './modules/portfolio/portfolio.module';
       envFilePath: '.env',
       load: [circleConfig, appConfig],
     }),
+    AuthModule,
     CircleModule,
     ChainModule,
     UsersModule,
