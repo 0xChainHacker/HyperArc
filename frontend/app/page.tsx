@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { api, Product, PortfolioHolding } from './api/client';
+import { SiweMessage } from 'siwe';
+import { BrowserProvider, getAddress } from 'ethers';
 
 type UserRole = 'investor' | 'issuer';
 type InvestorTab = 'products' | 'portfolio';
@@ -30,6 +32,7 @@ export default function Home() {
   const [connectingWallet, setConnectingWallet] = useState(false);
   const [metamaskAddress, setMetamaskAddress] = useState<string | null>(null);
   const [circleWalletAddress, setCircleWalletAddress] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   
   // Create product form state
   const [newProduct, setNewProduct] = useState({
@@ -174,9 +177,13 @@ export default function Home() {
         throw new Error('No accounts found. Please unlock MetaMask.');
       }
 
-      const metamaskAddr = accounts[0];
+      const metamaskAddr = getAddress(accounts[0]); // Convert to EIP-55 checksum format
       setMetamaskAddress(metamaskAddr);
       setWalletAddress(metamaskAddr);
+
+      // Perform SIWE authentication
+      await handleSiweLogin(metamaskAddr);
+
       setWalletConnected(true);
 
       // Auto-create/get Circle wallet after MetaMask connection
@@ -187,6 +194,71 @@ export default function Home() {
       alert(err instanceof Error ? err.message : 'Failed to connect MetaMask');
     } finally {
       setConnectingWallet(false);
+    }
+  };
+
+  const handleSiweLogin = async (address: string) => {
+    try {
+      console.log('Starting SIWE login for address:', address);
+
+      // 1. Get nonce from backend
+      const nonceResponse = await fetch('http://localhost:3001/auth/nonce');
+      if (!nonceResponse.ok) {
+        throw new Error('Failed to get nonce from server');
+      }
+      const { nonce } = await nonceResponse.json();
+      console.log('Received nonce:', nonce);
+
+      // 2. Create SIWE message
+      const message = new SiweMessage({
+        domain: window.location.host,
+        address: address,
+        statement: 'Sign in with Ethereum to HyperArc',
+        uri: window.location.origin,
+        version: '1',
+        chainId: 5042002,
+        nonce: nonce,
+        issuedAt: new Date().toISOString()
+      });
+
+      const messageString = message.prepareMessage();
+      console.log('SIWE Message:', messageString);
+
+      // 3. Sign message with MetaMask
+      const provider = new BrowserProvider(window.ethereum!);
+      const signer = await provider.getSigner();
+      const signature = await signer.signMessage(messageString);
+      console.log('Signature:', signature);
+
+      // 4. Verify signature with backend
+      const verifyResponse = await fetch('http://localhost:3001/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: messageString,
+          signature: signature
+        })
+      });
+
+      if (!verifyResponse.ok) {
+        const errorData = await verifyResponse.json();
+        throw new Error(errorData.message || 'SIWE verification failed');
+      }
+
+      const { accessToken, user } = await verifyResponse.json();
+      console.log('SIWE login successful!', user);
+      
+      // Store the JWT token
+      setAuthToken(accessToken);
+      localStorage.setItem('authToken', accessToken);
+      
+      alert(`Successfully logged in as ${address}`);
+      
+    } catch (err) {
+      console.error('SIWE login error:', err);
+      throw err;
     }
   };
 
