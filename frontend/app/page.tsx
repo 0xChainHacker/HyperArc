@@ -182,7 +182,6 @@ export default function Home() {
       // Auto-create/get Circle wallet after MetaMask connection
       await handleGetCircleWallet();
       
-      alert(`MetaMask connected!\nAddress: ${metamaskAddr}`);
     } catch (err) {
       console.error('MetaMask connection error:', err);
       alert(err instanceof Error ? err.message : 'Failed to connect MetaMask');
@@ -279,23 +278,23 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="text-right">
-                <p className="text-xs text-slate-500 dark:text-slate-400">Wallet Balance</p>
-                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                  {loading ? '...' : `$${(walletBalance || 0).toFixed(2)} USDC`}
-                </p>
-                {walletConnected && (
-                  <div className="mt-1 space-y-1">
-                    {metamaskAddress && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                        🦊 {metamaskAddress.slice(0, 6)}...{metamaskAddress.slice(-4)}
+              <div className="flex items-center gap-3">
+                {walletConnected && metamaskAddress ? (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                    <span className="text-lg">🦊</span>
+                    <div className="text-left">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Connected</p>
+                      <p className="text-sm font-mono font-semibold text-slate-900 dark:text-slate-100">
+                        {metamaskAddress.slice(0, 6)}...{metamaskAddress.slice(-4)}
                       </p>
-                    )}
-                    {circleWalletAddress && (
-                      <p className="text-xs text-blue-600 dark:text-blue-400 font-mono">
-                        ⭕ {circleWalletAddress.slice(0, 6)}...{circleWalletAddress.slice(-4)}
-                      </p>
-                    )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Wallet Balance</p>
+                    <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                      {loading ? '...' : `$${(walletBalance || 0).toFixed(2)} USDC`}
+                    </p>
                   </div>
                 )}
               </div>
@@ -312,7 +311,7 @@ export default function Home() {
                   disabled={connectingWallet}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
                 >
-                  {connectingWallet ? 'Connecting...' : 'Connect MetaMask'}
+                  {connectingWallet ? 'Connecting...' : 'Connect Wallet'}
                 </button>
               )}
             </div>
