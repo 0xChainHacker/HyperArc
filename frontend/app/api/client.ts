@@ -45,14 +45,30 @@ export interface BalanceInfo {
 
 class HyperArcAPI {
   private baseUrl: string;
+  private onUnauthorized?: () => void;
 
   constructor(baseUrl: string = BASE_URL) {
     this.baseUrl = baseUrl;
   }
 
+  setUnauthorizedHandler(handler: () => void) {
+    this.onUnauthorized = handler;
+  }
+
+  private async handleResponse(response: Response) {
+    if (response.status === 401) {
+      console.warn('JWT expired or invalid, triggering logout');
+      if (this.onUnauthorized) {
+        this.onUnauthorized();
+      }
+      throw new Error('Authentication expired. Please login again.');
+    }
+    return response;
+  }
+
   // Authentication
   async getNonce(): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/auth/nonce`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/auth/nonce`));
     if (!response.ok) throw new Error('Failed to get nonce');
     const data = await response.json();
     return data.nonce;
@@ -64,11 +80,11 @@ class HyperArcAPI {
     role: string;
     address: string;
   }> {
-    const response = await fetch(`${this.baseUrl}/auth/verify`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/auth/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, signature }),
-    });
+    }));
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.message || 'SIWE verification failed');
@@ -78,10 +94,10 @@ class HyperArcAPI {
 
   // Wallet Management
   async createWallet(userId: string, role: 'investor' | 'issuer' | 'admin' = 'investor', blockchains: string = 'ARC-TESTNET'): Promise<WalletInfo> {
-    const response = await fetch(`${this.baseUrl}/wallets/${userId}?role=${role}&blockchains=${blockchains}`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}?role=${role}&blockchains=${blockchains}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    });
+    }));
     if (!response.ok) throw new Error('Failed to create wallet');
     return response.json();
   }
@@ -90,32 +106,32 @@ class HyperArcAPI {
     const url = role 
       ? `${this.baseUrl}/wallets/${userId}?role=${role}`
       : `${this.baseUrl}/wallets/${userId}`;
-    const response = await fetch(url);
+    const response = await this.handleResponse(await fetch(url));
     if (!response.ok) throw new Error('Failed to get wallet');
     return response.json();
   }
 
   async getWalletBalance(userId: string, role: 'investor' | 'issuer' = 'investor'): Promise<BalanceInfo> {
-    const response = await fetch(`${this.baseUrl}/wallets/${userId}/balance?role=${role}`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}/balance?role=${role}`));
     if (!response.ok) throw new Error('Failed to get balance');
     return response.json();
   }
 
   // Products
   async listProducts(): Promise<Product[]> {
-    const response = await fetch(`${this.baseUrl}/products`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products`));
     if (!response.ok) throw new Error('Failed to list products');
     return response.json();
   }
 
   async getPendingProducts(): Promise<Product[]> {
-    const response = await fetch(`${this.baseUrl}/products/pending`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/pending`));
     if (!response.ok) throw new Error('Failed to get pending products');
     return response.json();
   }
 
   async getProductDetails(productId: number): Promise<Product> {
-    const response = await fetch(`${this.baseUrl}/products/${productId}`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}`));
     if (!response.ok) throw new Error('Failed to get product details');
     return response.json();
   }
@@ -128,93 +144,93 @@ class HyperArcAPI {
     metadataURI: string;
     issuerUserId: string;
   }): Promise<Product> {
-    const response = await fetch(`${this.baseUrl}/products`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(productData),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to create product');
     return response.json();
   }
 
   async approveProduct(productId: number, adminUserId: string): Promise<Product> {
-    const response = await fetch(`${this.baseUrl}/products/${productId}/approve`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adminUserId }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to approve product');
     return response.json();
   }
 
   async rejectProduct(productId: number, adminUserId: string, reason?: string): Promise<Product> {
-    const response = await fetch(`${this.baseUrl}/products/${productId}/reject`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}/reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adminUserId, reason }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to reject product');
     return response.json();
   }
 
   async deactivateProduct(productId: number, issuerUserId: string): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/products/${productId}/deactivate`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}/deactivate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ issuerUserId }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to deactivate product');
     return response.json();
   }
 
   async refundInvestor(productId: number, issuerUserId: string, investorAddress: string, units: string): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/products/${productId}/refund`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}/refund`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ issuerUserId, investorAddress, units }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to refund investor');
     return response.json();
   }
 
   async withdrawFunds(productId: number, issuerUserId: string, amountE6: string): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/products/${productId}/withdraw`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}/withdraw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ issuerUserId, amountE6 }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to withdraw funds');
     return response.json();
   }
 
   // Investment
   async subscribe(userId: string, productId: number, amountE6: string): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/invest/subscribe`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/invest/subscribe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, productId, amountE6 }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to subscribe');
     return response.json();
   }
 
   // Dividends
   async declareDividend(issuerUserId: string, productId: number, amountE6: string): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/dividends/declare`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/dividends/declare`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ issuerUserId, productId, amountE6 }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to declare dividend');
     return response.json();
   }
 
   async claimDividend(userId: string, productId: number): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/dividends/claim`, {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/dividends/claim`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, productId }),
-    });
+    }));
     if (!response.ok) throw new Error('Failed to claim dividend');
     return response.json();
   }
@@ -225,7 +241,7 @@ class HyperArcAPI {
     totalInvested: number;
     totalPendingDividends: number;
   }> {
-    const response = await fetch(`${this.baseUrl}/portfolio/${userId}`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/portfolio/${userId}`));
     if (!response.ok) throw new Error('Failed to get portfolio');
     return response.json();
   }

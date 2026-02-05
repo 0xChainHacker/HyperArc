@@ -41,10 +41,45 @@ export default function Home() {
     category: 'Real Estate'
   });
 
+  // Setup automatic logout on JWT expiry
+  useEffect(() => {
+    api.setUnauthorizedHandler(() => {
+      console.log('JWT expired, logging out automatically');
+      handleDisconnectWallet();
+      alert('Your session has expired. Please login again.');
+    });
+  }, []);
+
+  // Restore authentication state from localStorage on mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem('authToken');
+    const storedUserId = localStorage.getItem('userId');
+    
+    if (storedToken && storedUserId) {
+      console.log('Restoring authentication state from localStorage');
+      setAuthToken(storedToken);
+      setUserId(storedUserId);
+      setWalletConnected(true);
+      
+      // Optionally restore MetaMask address if available
+      if (typeof window.ethereum !== 'undefined') {
+        window.ethereum.request({ method: 'eth_accounts' })
+          .then((accounts: string[]) => {
+            if (accounts.length > 0) {
+              const addr = getAddress(accounts[0]);
+              setMetamaskAddress(addr);
+              setWalletAddress(addr);
+            }
+          })
+          .catch((err: Error) => console.error('Failed to get MetaMask accounts:', err));
+      }
+    }
+  }, []);
+
   // Load data on component mount and role change
   useEffect(() => {
     loadData();
-  }, [userRole]);
+  }, [userRole, walletConnected, userId]);
 
   const loadData = async () => {
     setLoading(true);
