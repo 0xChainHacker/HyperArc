@@ -4,6 +4,19 @@ export class FundArcDto {
   amount: string; // USDC amount
 }
 
+export class AggregateToArcDto {
+  userId: string;
+  minAmountPerChain?: number; // Minimum USDC to transfer from each chain (default: 0.01)
+  maxFee?: string; // Maximum fee per transfer (default: "2010000")
+}
+
+export class TransferToArcDto {
+  userId: string;
+  sourceChain: 'ETH-SEPOLIA' | 'BASE-SEPOLIA' | 'AVAX-FUJI';
+  amount: number;
+  maxFee?: string;
+}
+
 export class SubscribeDto {
   userId: string;
   productId: number;
@@ -20,3 +33,4 @@ export class ClaimDividendDto {
   userId: string;  // Investor user ID
   productId: number;
 }
+

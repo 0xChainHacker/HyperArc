@@ -380,7 +380,51 @@
       "name": "2. Gateway (Cross-chain Funding)",
       "item": [
         {
-          "name": "Fund Arc Address",
+          "name": "Aggregate USDC to ARC (Multi-chain)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"minAmountPerChain\": 0.01,\n  \"maxFee\": \"2010000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/gateway/aggregate-to-arc",
+              "host": ["{{baseUrl}}"],
+              "path": ["gateway", "aggregate-to-arc"]
+            },
+            "description": "Automatically aggregate USDC from multiple source chains (ETH-SEPOLIA, BASE-SEPOLIA, AVAX-FUJI) to ARC-TESTNET. This endpoint will query balances on all supported source chains and transfer amounts that meet the minimum threshold.\n\n**Supported Source Chains:**\n- ETH-SEPOLIA (Ethereum Sepolia Testnet)\n- BASE-SEPOLIA (Base Sepolia Testnet)\n- AVAX-FUJI (Avalanche Fuji Testnet)\n\n**Note:** Uses Circle's Cross-Chain Transfer Protocol (CCTP) with standard USDC (6 decimals). Testnet native tokens like USDC-TESTNET (18 decimals) are not supported."
+          }
+        },
+        {
+          "name": "Transfer to ARC (Single-chain)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"sourceChain\": \"ETH-SEPOLIA\",\n  \"amount\": 100.00,\n  \"maxFee\": \"2010000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/gateway/transfer-to-arc",
+              "host": ["{{baseUrl}}"],
+              "path": ["gateway", "transfer-to-arc"]
+            },
+            "description": "Transfer USDC from a specific source chain to ARC-TESTNET using Circle's CCTP."
+          }
+        },
+        {
+          "name": "Fund Arc Address (On-ramp)",
           "request": {
             "method": "POST",
             "header": [
@@ -398,7 +442,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["gateway", "fund-arc"]
             },
-            "description": "Deposit USDC from source chain and withdraw to Arc address"
+            "description": "Deposit USDC from source chain and withdraw to Arc address (on-ramp)"
           }
         },
         {

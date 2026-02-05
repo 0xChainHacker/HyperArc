@@ -616,4 +616,243 @@ export class CircleGatewayService {
     }
     return BigInt(balanceString || '0');
   }
+
+  /**
+   * Get USDC contract address for a specific chain
+   */
+  getUSDCAddress(chain: WalletChain): string {
+    const usdcAddresses = {
+      'ETH-SEPOLIA': '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+      'BASE-SEPOLIA': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      'AVAX-FUJI': '0x5425890298aed601595a70AB815c96711a31Bc65',
+      'ARC-TESTNET': '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', // Assuming ARC testnet USDC address
+    };
+    return usdcAddresses[chain];
+  }
+
+  /**
+   * Aggregate USDC from multiple source chains to ARC-TESTNET
+   * Automatically queries balances and transfers available USDC from each chain
+   * 
+   * @param depositorAddress - The wallet address (same across all chains for EOA)
+   * @param sourceWalletIds - Map of chain to walletId (e.g., { 'ETH-SEPOLIA': 'wallet-id-1', 'BASE-SEPOLIA': 'wallet-id-2' })
+   * @param destinationWalletId - ARC-TESTNET wallet ID
+   * @param recipientAddress - Final recipient address on ARC-TESTNET
+   * @param minAmountPerChain - Minimum USDC amount to transfer from each chain (default: 0.01)
+   * @param maxFee - Maximum fee per transfer (default: "2010000" = 2.01 USDC)
+   * @returns Array of transfer results for each chain
+   */
+  async aggregateUSDCToArc(params: {
+    depositorAddress: string;
+    sourceWalletIds: { [chain in WalletChain]?: string };
+    destinationWalletId: string;
+    recipientAddress: string;
+    minAmountPerChain?: number;
+    maxFee?: string;
+  }): Promise<{
+    totalTransferred: string;
+    transfers: Array<{
+      sourceChain: string;
+      amount: number;
+      attestation: string;
+      mintTxId: string;
+      status: 'success' | 'skipped' | 'failed';
+      error?: string;
+    }>;
+  }> {
+    const {
+      depositorAddress,
+      sourceWalletIds,
+      destinationWalletId,
+      recipientAddress,
+      minAmountPerChain = 0.01,
+      maxFee = '2010000',
+    } = params;
+
+    this.logger.log('=== Starting Multi-Chain USDC Aggregation to ARC-TESTNET ===');
+    this.logger.log(`Depositor: ${depositorAddress}`);
+    this.logger.log(`Destination Wallet ID: ${destinationWalletId}`);
+    this.logger.log(`Recipient: ${recipientAddress}`);
+    this.logger.log(`Min Amount Per Chain: ${minAmountPerChain} USDC`);
+
+    // Step 1: Query balances on all source chains (only Gateway-supported chains)
+    const supportedChains = Object.keys(this.chainDomains);
+    const allSourceChains = Object.keys(sourceWalletIds).filter(
+      chain => chain !== 'ARC-TESTNET'
+    );
+    const sourceChains = allSourceChains.filter(
+      chain => supportedChains.includes(chain)
+    ) as WalletChain[];
+
+    // Log unsupported chains if any
+    const unsupportedChains = allSourceChains.filter(
+      chain => !supportedChains.includes(chain)
+    );
+    if (unsupportedChains.length > 0) {
+      this.logger.warn(
+        `Skipping unsupported chains (Gateway only supports ${supportedChains.join(', ')}): ${unsupportedChains.join(', ')}`
+      );
+    }
+
+    this.logger.log(`\nStep 1: Querying balances on ${sourceChains.length} Gateway-supported chains...`);
+    const balances = await this.getUnifiedUSDCBalance(depositorAddress, sourceChains);
+
+    // Step 2: Process transfers from each chain
+    const transfers: Array<{
+      sourceChain: string;
+      amount: number;
+      attestation: string;
+      mintTxId: string;
+      status: 'success' | 'skipped' | 'failed';
+      error?: string;
+    }> = [];
+
+    let totalTransferred = 0;
+
+    this.logger.log('\nStep 2: Processing transfers...');
+    for (const chainBalance of balances.balancesByChain) {
+      const sourceChain = chainBalance.chain as WalletChain;
+      const sourceWalletId = sourceWalletIds[sourceChain];
+      const availableAmount = parseFloat(chainBalance.balanceUSDC);
+
+      this.logger.log(`\n--- ${sourceChain} ---`);
+      this.logger.log(`Available: ${availableAmount} USDC`);
+      this.logger.log(`Wallet ID: ${sourceWalletId}`);
+
+      // Skip if no wallet ID configured
+      if (!sourceWalletId) {
+        this.logger.warn(`No wallet ID configured for ${sourceChain}, skipping`);
+        transfers.push({
+          sourceChain,
+          amount: 0,
+          attestation: '',
+          mintTxId: '',
+          status: 'skipped',
+          error: 'No wallet ID configured',
+        });
+        continue;
+      }
+
+      // Skip if balance too low
+      if (availableAmount < minAmountPerChain) {
+        this.logger.warn(
+          `Balance too low on ${sourceChain} (${availableAmount} < ${minAmountPerChain}), skipping`
+        );
+        transfers.push({
+          sourceChain,
+          amount: availableAmount,
+          attestation: '',
+          mintTxId: '',
+          status: 'skipped',
+          error: `Balance too low (${availableAmount} < ${minAmountPerChain})`,
+        });
+        continue;
+      }
+
+      // Calculate amount to transfer (leave small buffer for fees)
+      const amountToTransfer = Math.max(0, availableAmount - 0.001);
+      
+      this.logger.log(`Transferring: ${amountToTransfer} USDC`);
+
+      try {
+        // Execute cross-chain transfer
+        const result = await this.crossChainTransfer({
+          sourceWalletId,
+          sourceDomain: chainBalance.domain,
+          sourceUsdcAddress: this.getUSDCAddress(sourceChain),
+          destinationWalletId,
+          destinationDomain: this.chainDomains['ARC-TESTNET'].domain,
+          destinationUsdcAddress: this.getUSDCAddress('ARC-TESTNET'),
+          destinationBlockchain: 'ARC-TESTNET',
+          recipientAddress,
+          amount: amountToTransfer,
+          maxFee,
+        });
+
+        transfers.push({
+          sourceChain,
+          amount: amountToTransfer,
+          attestation: result.attestation,
+          mintTxId: result.mintTxId,
+          status: 'success',
+        });
+
+        totalTransferred += amountToTransfer;
+        this.logger.log(`✅ Success: ${amountToTransfer} USDC transferred`);
+      } catch (error) {
+        this.logger.error(`❌ Failed to transfer from ${sourceChain}:`, error.message);
+        transfers.push({
+          sourceChain,
+          amount: amountToTransfer,
+          attestation: '',
+          mintTxId: '',
+          status: 'failed',
+          error: error.message,
+        });
+      }
+    }
+
+    this.logger.log('\n=== Aggregation Complete ===');
+    this.logger.log(`Total Transferred: ${totalTransferred.toFixed(6)} USDC`);
+    this.logger.log(
+      `Success: ${transfers.filter(t => t.status === 'success').length}/${transfers.length}`
+    );
+
+    return {
+      totalTransferred: totalTransferred.toFixed(6),
+      transfers,
+    };
+  }
+
+  /**
+   * Transfer USDC from a single source chain to ARC-TESTNET
+   * Simplified wrapper for single-chain to ARC transfer
+   */
+  async transferToArc(params: {
+    sourceChain: WalletChain;
+    sourceWalletId: string;
+    destinationWalletId: string;
+    recipientAddress: string;
+    amount: number;
+    maxFee?: string;
+  }): Promise<{ attestation: string; mintTxId: string }> {
+    const {
+      sourceChain,
+      sourceWalletId,
+      destinationWalletId,
+      recipientAddress,
+      amount,
+      maxFee = '2010000',
+    } = params;
+
+    if (sourceChain === 'ARC-TESTNET') {
+      throw new Error('Cannot transfer to ARC-TESTNET from ARC-TESTNET');
+    }
+
+    // Check if source chain is supported by Gateway
+    const supportedChains = Object.keys(this.chainDomains);
+    if (!supportedChains.includes(sourceChain)) {
+      throw new Error(
+        `Unsupported source chain: ${sourceChain}. Gateway supports: ${supportedChains.join(', ')}`
+      );
+    }
+
+    this.logger.log(`Transferring ${amount} USDC from ${sourceChain} to ARC-TESTNET`);
+
+    const sourceChainInfo = this.chainDomains[sourceChain];
+    const destChainInfo = this.chainDomains['ARC-TESTNET'];
+
+    return this.crossChainTransfer({
+      sourceWalletId,
+      sourceDomain: sourceChainInfo.domain,
+      sourceUsdcAddress: this.getUSDCAddress(sourceChain),
+      destinationWalletId,
+      destinationDomain: destChainInfo.domain,
+      destinationUsdcAddress: this.getUSDCAddress('ARC-TESTNET'),
+      destinationBlockchain: 'ARC-TESTNET',
+      recipientAddress,
+      amount,
+      maxFee,
+    });
+  }
 }
