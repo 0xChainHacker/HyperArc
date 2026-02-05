@@ -1,5 +1,7 @@
 import { Injectable, Logger, NotFoundException, OnModuleInit, BadRequestException } from '@nestjs/common';
 import { CircleWalletService } from '../circle/circle-wallet.service';
+import { CircleGatewayService } from '../circle/circle-gateway.service';
+import { ArcContractService } from '../chain/arc-contract.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -9,12 +11,16 @@ export enum WalletRole {
   ADMIN = 'admin',        // Platform admin wallet
 }
 
+export interface ChainWallet {
+  walletId: string;
+  address: string;
+}
+
 export interface UserWallet {
   userId: string;
   email?: string;
-  walletId: string;
   role: WalletRole;                           // Wallet role
-  circleWallet: { [blockchain: string]: string }; // Circle wallet addresses on each blockchain
+  circleWallet: { [blockchain: string]: ChainWallet }; // Per-chain wallet info
   externalWallets?: string[];                 // External wallet addresses (array of strings)
   state: 'LIVE' | 'FROZEN';                  // Wallet state
   createdAt: string;
@@ -28,7 +34,11 @@ export class UsersService implements OnModuleInit {
   private readonly userWallets = new Map<string, UserWallet>();
   private readonly storageFile = path.join(process.cwd(), 'data', 'user-wallets.json');
 
-  constructor(private readonly circleWalletService: CircleWalletService) {}
+  constructor(
+    private readonly circleWalletService: CircleWalletService,
+    private readonly circleGatewayService: CircleGatewayService,
+    private readonly arcContractService: ArcContractService,
+  ) {}
 
   onModuleInit() {
     this.loadWalletsFromFile();
@@ -39,6 +49,22 @@ export class UsersService implements OnModuleInit {
    */
   private getMapKey(userId: string, role: WalletRole): string {
     return `${userId}:${role}`;
+  }
+
+  /**
+   * Check if token symbol is USDC (supports various testnet naming)
+   * Mainnet: USDC
+   * Testnets: USDC-TESTNET, USDCTest, USDC.e, etc.
+   */
+  private isUSDCToken(symbol: string): boolean {
+    const normalizedSymbol = symbol.toUpperCase();
+    return (
+      normalizedSymbol === 'USDC' ||
+      normalizedSymbol === 'USDC-TESTNET' ||
+      normalizedSymbol === 'USDCTEST' ||
+      normalizedSymbol.startsWith('USDC.') ||
+      normalizedSymbol.includes('USDC')
+    );
   }
 
   /**
@@ -110,11 +136,19 @@ export class UsersService implements OnModuleInit {
       blockchains
     );
     
+    // Convert addresses to new format with walletId per chain
+    const circleWallet: { [blockchain: string]: ChainWallet } = {};
+    for (const [blockchain, address] of Object.entries(walletData.addresses)) {
+      circleWallet[blockchain] = {
+        walletId: walletData.id,
+        address: address as string,
+      };
+    }
+    
     userWallet = {
       userId,
-      walletId: walletData.id,
       role,
-      circleWallet: walletData.addresses,
+      circleWallet,
       externalWallets: [],
       state: walletData.state,
       createdAt: new Date().toISOString(),
@@ -206,15 +240,57 @@ export class UsersService implements OnModuleInit {
   }
 
   /**
-   * Get wallet by ID
+   * Get wallet by ID (searches across all chains)
    */
   async getWalletById(walletId: string): Promise<UserWallet | null> {
     for (const wallet of this.userWallets.values()) {
-      if (wallet.walletId === walletId) {
-        return wallet;
+      // Check all chains for matching walletId
+      for (const chainWallet of Object.values(wallet.circleWallet)) {
+        if (chainWallet.walletId === walletId) {
+          return wallet;
+        }
       }
     }
     return null;
+  }
+
+  /**
+   * Get Circle wallet ID (same across all chains for EOA wallets)
+   * Used for querying multi-chain assets via Circle Wallet API
+   */
+  private getCircleWalletId(userWallet: UserWallet): string {
+    const chainWallets = Object.values(userWallet.circleWallet);
+    if (chainWallets.length === 0) {
+      throw new NotFoundException('Wallet has no blockchain addresses configured');
+    }
+    // All chains share the same walletId for EOA wallets
+    return (chainWallets[0] as ChainWallet).walletId;
+  }
+
+  /**
+   * Get walletId for a specific chain (helper method)
+   */
+  private getWalletIdForChain(userWallet: UserWallet, blockchain: string = 'ARC-TESTNET'): string {
+    const chainWallet = userWallet.circleWallet[blockchain];
+    if (!chainWallet) {
+      throw new NotFoundException(
+        `No wallet found for blockchain ${blockchain}. Available chains: ${Object.keys(userWallet.circleWallet).join(', ')}`
+      );
+    }
+    return chainWallet.walletId;
+  }
+
+  /**
+   * Get address for a specific chain (helper method)
+   */
+  private getAddressForChain(userWallet: UserWallet, blockchain: string = 'ARC-TESTNET'): string {
+    const chainWallet = userWallet.circleWallet[blockchain];
+    if (!chainWallet) {
+      throw new NotFoundException(
+        `No wallet found for blockchain ${blockchain}. Available chains: ${Object.keys(userWallet.circleWallet).join(', ')}`
+      );
+    }
+    return chainWallet.address;
   }
 
   /**
@@ -259,8 +335,11 @@ export class UsersService implements OnModuleInit {
       return existingWallet;
     }
 
+    // Get any existing walletId (they should all be the same)
+    const baseWalletId = Object.values(existingWallet.circleWallet)[0]?.walletId;
+    
     this.logger.log(
-      `Deriving wallet ${existingWallet.walletId} on new blockchains: ${actuallyNewBlockchains.join(', ')}`
+      `Deriving wallet ${baseWalletId} on new blockchains: ${actuallyNewBlockchains.join(', ')}`
     );
     
     // Derive wallet on each new blockchain using Circle SDK
@@ -270,11 +349,14 @@ export class UsersService implements OnModuleInit {
       try {
         const walletName = `${userId}-${role}`;
         const address = await this.circleWalletService.deriveWallet(
-          existingWallet.walletId,
+          baseWalletId,
           blockchain,
           walletName
         );
-        updatedCircleWallet[blockchain] = address;
+        updatedCircleWallet[blockchain] = {
+          walletId: baseWalletId,
+          address,
+        };
         this.logger.log(`Derived ${blockchain}: ${address}`);
       } catch (error) {
         this.logger.error(`Failed to derive wallet on ${blockchain}:`, error.message);
@@ -294,7 +376,7 @@ export class UsersService implements OnModuleInit {
     this.saveWalletsToFile();
     
     this.logger.log(
-      `Blockchains added successfully. WalletId: ${existingWallet.walletId} (unchanged), ` +
+      `Blockchains added successfully. WalletId: ${baseWalletId} (unchanged), ` +
       `New blockchains: ${actuallyNewBlockchains.join(', ')}, ` +
       `Addresses: ${JSON.stringify(updatedCircleWallet)}`
     );
@@ -306,7 +388,7 @@ export class UsersService implements OnModuleInit {
    * Get address for specific blockchain
    */
   getAddressForBlockchain(wallet: UserWallet, blockchain: string): string | undefined {
-    return wallet.circleWallet?.[blockchain];
+    return wallet.circleWallet?.[blockchain]?.address;
   }
 
   /**
@@ -364,7 +446,7 @@ export class UsersService implements OnModuleInit {
     const normalizedAddress = address.toLowerCase();
     for (const wallet of this.userWallets.values()) {
       // Check Circle wallet addresses
-      const circleAddresses = Object.values(wallet.circleWallet || {});
+      const circleAddresses = Object.values(wallet.circleWallet || {}).map(cw => cw.address);
       if (circleAddresses.some(addr => addr?.toLowerCase() === normalizedAddress)) {
         return wallet;
       }
@@ -381,95 +463,202 @@ export class UsersService implements OnModuleInit {
   }
 
   /**
-   * Get wallet balance (aggregates USDC across all chains)
+   * Get wallet balance (aggregates USDC across all chains using Gateway API)
+   * Used internally by getUserWallet when includeBalance=true
    */
   async getWalletBalance(userId: string, role: WalletRole = WalletRole.INVESTOR) {
-    const userWallet = await this.getUserWallet(userId, role);
-    const tokenBalances = await this.circleWalletService.getWalletBalance(userWallet.walletId);
-    
-    this.logger.debug(`Processing tokenBalances for ${userId}:${role}:`, JSON.stringify(tokenBalances, null, 2));
-    
-    // Aggregate USDC balance across all chains
-    let totalBalance = 0;
-    if (Array.isArray(tokenBalances)) {
-      for (const tokenBalance of tokenBalances) {
-        this.logger.debug(`Token balance item:`, JSON.stringify(tokenBalance, null, 2));
-        
-        // Match USDC or USDC-TESTNET
-        const symbol = tokenBalance.token?.symbol || '';
-        const isUSDC = symbol === 'USDC' || symbol === 'USDC-TESTNET';
-        
-        if (isUSDC && tokenBalance.amount) {
-          // Circle returns amount as string, already in decimal format
-          const amount = Number(tokenBalance.amount);
-          this.logger.debug(`Found ${symbol}: ${tokenBalance.amount} USD on ${tokenBalance.token?.blockchain}`);
-          totalBalance += amount;
+    try {
+      // Try to use Gateway API for unified USDC balance
+      const unifiedBalance = await this.getUnifiedUSDCBalance(userId, role);
+      return {
+        balance: unifiedBalance.totalBalanceE6,
+        balanceUSD: parseFloat(unifiedBalance.totalBalanceUSDC),
+      };
+    } catch (error) {
+      this.logger.warn(`Failed to get unified balance via Gateway API, falling back to Wallet API`, error.message);
+      
+      // Fallback to Circle Wallet API - query all chains
+      const userWallet = await this.getUserWallet(userId, role);
+      let totalBalance = 0;
+      
+      for (const [blockchain, chainWallet] of Object.entries(userWallet.circleWallet) as [string, ChainWallet][]) {
+        try {
+          const tokenBalances = await this.circleWalletService.getWalletBalance(chainWallet.walletId);
+          
+          if (Array.isArray(tokenBalances)) {
+            for (const tokenBalance of tokenBalances) {
+              const symbol = tokenBalance.token?.symbol || '';
+              const isUSDC = this.isUSDCToken(symbol);
+              
+              if (isUSDC && tokenBalance.amount) {
+                const amount = Number(tokenBalance.amount);
+                totalBalance += amount;
+              }
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`Failed to query balance for ${blockchain}:`, err.message);
         }
       }
+      
+      return {
+        balance: (totalBalance * 1_000_000).toString(),
+        balanceUSD: totalBalance,
+      };
     }
-    
-    this.logger.log(`Total balance for ${userId}:${role}: ${totalBalance} USDC`);
-    
-    return {
-      balance: (totalBalance * 1_000_000).toString(),  // Convert to E6 for contract compatibility
-      balanceUSD: totalBalance,
-    };
   }
 
   /**
    * Get detailed wallet balance (per-chain breakdown with all assets)
+   * Queries each chain's walletId separately and aggregates results
+   * 
+   * ✅ Recommended for testnet: Returns all tokens including USDC-TESTNET (18 decimals)
+   * Use this API to see actual balances on testnets
    */
   async getDetailedWalletBalance(userId: string, role: WalletRole = WalletRole.INVESTOR) {
     const userWallet = await this.getUserWallet(userId, role);
-    const tokenBalances = await this.circleWalletService.getWalletBalance(userWallet.walletId);
     
-    // Group by blockchain
+    // Query each chain's wallet separately (each chain may have different walletId)
     const balancesByChain: { [chain: string]: any[] } = {};
     let totalUSDC = 0;
+    let allTokenBalances: any[] = [];
+    const walletIds = new Set<string>();
     
-    if (Array.isArray(tokenBalances)) {
-      for (const tokenBalance of tokenBalances) {
-        const blockchain = tokenBalance.token?.blockchain || 'UNKNOWN';
-        const symbol = tokenBalance.token?.symbol || '';
-        const amount = Number(tokenBalance.amount || 0);
+    for (const [blockchain, chainWallet] of Object.entries(userWallet.circleWallet) as [string, ChainWallet][]) {
+      try {
+        this.logger.log(`Querying balance for ${blockchain} with walletId: ${chainWallet.walletId}`);
+        walletIds.add(chainWallet.walletId);
         
-        if (!balancesByChain[blockchain]) {
-          balancesByChain[blockchain] = [];
+        const tokenBalances = await this.circleWalletService.getWalletBalance(chainWallet.walletId);
+        
+        if (Array.isArray(tokenBalances) && tokenBalances.length > 0) {
+          allTokenBalances = allTokenBalances.concat(tokenBalances);
+          
+          for (const tokenBalance of tokenBalances) {
+            const tokenBlockchain = tokenBalance.token?.blockchain || blockchain;
+            const symbol = tokenBalance.token?.symbol || '';
+            const amount = Number(tokenBalance.amount || 0);
+            
+            if (!balancesByChain[tokenBlockchain]) {
+              balancesByChain[tokenBlockchain] = [];
+            }
+            
+            balancesByChain[tokenBlockchain].push({
+              token: {
+                name: tokenBalance.token?.name,
+                symbol: tokenBalance.token?.symbol,
+                decimals: tokenBalance.token?.decimals,
+                isNative: tokenBalance.token?.isNative,
+                tokenAddress: tokenBalance.token?.tokenAddress,
+              },
+              amount: tokenBalance.amount,
+              amountFormatted: amount.toFixed(tokenBalance.token?.decimals || 6),
+              updateDate: tokenBalance.updateDate,
+            });
+            
+            // Aggregate USDC for total
+            const isUSDC = this.isUSDCToken(symbol);
+            if (isUSDC) {
+              totalUSDC += amount;
+            }
+          }
         }
-        
-        balancesByChain[blockchain].push({
-          token: {
-            name: tokenBalance.token?.name,
-            symbol: tokenBalance.token?.symbol,
-            decimals: tokenBalance.token?.decimals,
-            isNative: tokenBalance.token?.isNative,
-            tokenAddress: tokenBalance.token?.tokenAddress,
-          },
-          amount: tokenBalance.amount,
-          amountFormatted: amount.toFixed(tokenBalance.token?.decimals || 6),
-          updateDate: tokenBalance.updateDate,
-        });
-        
-        // Aggregate USDC for total
-        const isUSDC = symbol === 'USDC' || symbol === 'USDC-TESTNET';
-        if (isUSDC) {
-          totalUSDC += amount;
-        }
+      } catch (error) {
+        this.logger.warn(`Failed to query balance for ${blockchain}:`, error.message);
       }
     }
     
     return {
       userId,
       role,
-      walletId: userWallet.walletId,
+      walletIds: Array.from(walletIds),
       summary: {
         totalUSDC: totalUSDC,
         totalUSDCE6: (totalUSDC * 1_000_000).toString(),
         chainsCount: Object.keys(balancesByChain).length,
-        assetsCount: tokenBalances.length,
+        assetsCount: allTokenBalances.length,
       },
       balancesByChain,
-      rawTokenBalances: tokenBalances,
+      rawTokenBalances: allTokenBalances,
+    };
+  }
+
+  /**
+   * Get unified USDC balance across multiple chains using Circle Gateway API
+   * 
+   * ⚠️ IMPORTANT: Gateway API only supports standard USDC (6 decimals) via CCTP
+   * For testnet native tokens like USDC-TESTNET (18 decimals), use getDetailedWalletBalance() instead
+   * 
+   * @param userId - User ID
+   * @param role - Wallet role
+   * @param chains - Optional list of chains to query (e.g., ['ARC-TESTNET', 'ETH-SEPOLIA'])
+   */
+  async getUnifiedUSDCBalance(
+    userId: string,
+    role: WalletRole = WalletRole.INVESTOR,
+    chains?: string[],
+  ) {
+    const userWallet = await this.getUserWallet(userId, role);
+    
+    // Get any address from the wallet (all addresses are the same for EOA wallets)
+    const addresses = Object.values(userWallet.circleWallet).map((cw: ChainWallet) => cw.address);
+    if (addresses.length === 0) {
+      throw new BadRequestException('Wallet has no addresses');
+    }
+    const depositorAddress = addresses[0] as string;
+    
+    // Query unified balance via Circle Gateway API
+    const unifiedBalance = await this.circleGatewayService.getUnifiedUSDCBalance(
+      depositorAddress,
+      chains,
+    );
+    
+    const walletId = this.getCircleWalletId(userWallet);
+    return {
+      userId,
+      role,
+      walletId,
+      depositorAddress,
+      ...unifiedBalance,
+    };
+  }
+
+  /**
+   * Get USDC balance on ARC-TESTNET chain (via blockchain query)
+   */
+  async getArcUSDCBalance(userId: string, role: WalletRole = WalletRole.INVESTOR) {
+    const userWallet = await this.getUserWallet(userId, role);
+    const arcAddress = this.getAddressForChain(userWallet, 'ARC-TESTNET');
+    
+    if (!arcAddress) {
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
+    }
+    
+    // Query USDC balance on Arc chain
+    const balanceE6 = await this.arcContractService.getUSDCBalance(arcAddress);
+    const balanceUSDC = (Number(balanceE6) / 1_000_000).toFixed(6);
+    
+    // Query USDC allowance for Ledger contract
+    const allowanceE6 = await this.arcContractService.getUSDCAllowance(arcAddress);
+    const allowanceUSDC = (Number(allowanceE6) / 1_000_000).toFixed(6);
+    
+    const walletId = this.getWalletIdForChain(userWallet, 'ARC-TESTNET');
+    return {
+      userId,
+      role,
+      walletId,
+      chain: 'ARC-TESTNET',
+      address: arcAddress,
+      balance: {
+        balanceE6,
+        balanceUSDC,
+      },
+      allowance: {
+        allowanceE6,
+        allowanceUSDC,
+      },
     };
   }
 }

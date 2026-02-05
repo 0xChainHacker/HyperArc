@@ -319,7 +319,10 @@ export class ProductsService {
         WalletRole.ISSUER
       );
 
-      const walletId = issuerWallet.walletId;
+      const walletId = issuerWallet.circleWallet['ARC-TESTNET']?.walletId;
+      if (!walletId) {
+        throw new BadRequestException('Issuer wallet does not have ARC-TESTNET chain configured');
+      }
 
       // Get current product info from blockchain
       const product = await this.arcContractService.getProduct(productId);
@@ -374,7 +377,10 @@ export class ProductsService {
         WalletRole.ISSUER
       );
 
-      const walletId = issuerWallet.walletId;
+      const walletId = issuerWallet.circleWallet['ARC-TESTNET']?.walletId;
+      if (!walletId) {
+        throw new BadRequestException('Issuer wallet does not have ARC-TESTNET chain configured');
+      }
 
       // Verify product is deactivated
       const product = await this.arcContractService.getProduct(productId);
@@ -446,14 +452,14 @@ export class ProductsService {
         WalletRole.ISSUER
       );
 
-      const walletId = issuerWallet.walletId;
+      const walletId = issuerWallet.circleWallet['ARC-TESTNET']?.walletId;
+      if (!walletId) {
+        throw new BadRequestException('Issuer wallet does not have ARC-TESTNET chain configured');
+      }
 
       // Get product to verify issuer
       const product = await this.arcContractService.getProduct(productId);
-      const issuerAddress = this.usersService.getAddressForBlockchain(
-        issuerWallet,
-        'ARC-TESTNET'
-      );
+      const issuerAddress = issuerWallet.circleWallet['ARC-TESTNET']?.address;
 
       if (product.issuer.toLowerCase() !== issuerAddress.toLowerCase()) {
         throw new BadRequestException(

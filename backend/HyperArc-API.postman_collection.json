@@ -261,7 +261,7 @@
                 }
               ]
             },
-            "description": "Adds new blockchain addresses to existing wallet. Creates new Circle wallet with all chains (existing + new)."
+            "description": "Adds new blockchain support to existing wallet using Circle's deriveWallet API.\n\n**How it works**:\n- Calls Circle's `deriveWallet()` API for each new blockchain\n- Wallet ID remains unchanged (same Circle wallet)\n- Derives blockchain address from same private key\n- Properly registers new blockchains in Circle's system\n- EOA wallets use same address across all chains\n\n**Example**:\nIf wallet `d3eacc15-1ec1-582e-a13c-b9dea0e9a727` has address `0xabc...` on ARC-TESTNET, calling this endpoint will:\n1. Call `deriveWallet(walletId, 'ARB-SEPOLIA')`\n2. Get address `0xabc...` for ARB-SEPOLIA (same as ARC-TESTNET)\n3. Register ARB-SEPOLIA in Circle's system\n4. Update local wallet record\n\n**Response includes**:\n- Same walletId (unchanged)\n- Updated blockchains array\n- Addresses for all blockchains (including newly derived ones)"
           }
         },
         {
@@ -270,11 +270,18 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/wallets/{{userId}}",
+              "raw": "{{baseUrl}}/wallets/{{userId}}?includeBalance=true",
               "host": ["{{baseUrl}}"],
-              "path": ["wallets", "{{userId}}"]
+              "path": ["wallets", "{{userId}}"],
+              "query": [
+                {
+                  "key": "includeBalance",
+                  "value": "true",
+                  "description": "Include balance information for all wallets (optional, default: false)"
+                }
+              ]
             },
-            "description": "Returns all wallets (investor, issuer, etc.) for the user"
+            "description": "Returns all wallets (investor, issuer, etc.) for the user.\n\n**Query Parameters**:\n- `includeBalance`: Set to `true` to include balance information for each wallet\n\n**Response** (array of wallet objects):\n```json\n[\n  {\n    \"userId\": \"user-123\",\n    \"walletId\": \"...\",\n    \"role\": \"investor\",\n    \"circleWallet\": { ... },\n    \"balance\": \"50000000\",\n    \"balanceUSD\": 50.0,\n    \"state\": \"LIVE\"\n  },\n  {\n    \"userId\": \"user-123\",\n    \"walletId\": \"...\",\n    \"role\": \"issuer\",\n    \"circleWallet\": { ... },\n    \"balance\": \"100000000\",\n    \"balanceUSD\": 100.0,\n    \"state\": \"LIVE\"\n  }\n]\n```"
           }
         },
         {
@@ -283,7 +290,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor",
+              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&includeBalance=true",
               "host": ["{{baseUrl}}"],
               "path": ["wallets", "{{userId}}"],
               "query": [
@@ -291,14 +298,19 @@
                   "key": "role",
                   "value": "investor",
                   "description": "investor, issuer, or admin"
+                },
+                {
+                  "key": "includeBalance",
+                  "value": "true",
+                  "description": "Include balance information (optional, default: false)"
                 }
               ]
             },
-            "description": "Get wallet for specific role with all blockchain addresses"
+            "description": "Get wallet for specific role with all blockchain addresses.\n\n**Query Parameters**:\n- `role`: Wallet role (investor, issuer, admin)\n- `includeBalance`: Set to `true` to include balance information (aggregated USDC across all chains)\n\n**Response without balance** (`includeBalance=false` or omitted):\n```json\n{\n  \"userId\": \"user-123\",\n  \"walletId\": \"...\",\n  \"role\": \"investor\",\n  \"circleWallet\": {\n    \"ARC-TESTNET\": \"0x...\",\n    \"ARB-SEPOLIA\": \"0x...\",\n    \"MATIC-AMOY\": \"0x...\",\n    \"ETH-SEPOLIA\": \"0x...\"\n  },\n  \"state\": \"LIVE\"\n}\n```\n\n**Response with balance** (`includeBalance=true`):\n```json\n{\n  \"userId\": \"user-123\",\n  \"walletId\": \"...\",\n  \"role\": \"investor\",\n  \"circleWallet\": {\n    \"ARC-TESTNET\": \"0x...\",\n    \"ARB-SEPOLIA\": \"0x...\",\n    \"MATIC-AMOY\": \"0x...\",\n    \"ETH-SEPOLIA\": \"0x...\"\n  },\n  \"balance\": \"50000000\",\n  \"balanceUSD\": 50.0,\n  \"state\": \"LIVE\"\n}\n```\n\n**Advantages**:\n- Single API call to get wallet info + balance\n- Balance aggregates USDC from all chains (ARC, ARB, MATIC, ETH)\n- Reduces network latency compared to separate calls"
           }
         },
         {
-          "name": "Get Investor Wallet Balance",
+          "name": "Get All Assets Balance (Multi-Chain)",
           "request": {
             "method": "GET",
             "header": [],
@@ -313,25 +325,53 @@
                   "description": "investor (default), issuer, or admin"
                 }
               ]
-            }
+            },
+            "description": "Get detailed balance breakdown by blockchain with all assets (via Circle Wallet API).\n\n**Returns**:\n- Summary with total USDC across all chains\n- Per-chain asset breakdown\n- All tokens (USDC, EURC, native tokens, etc.)\n- Token metadata (decimals, addresses)\n\n**Use Case**: \n- Portfolio analytics\n- Multi-asset management\n- Per-chain balance display\n\n**Response**:\n```json\n{\n  \"userId\": \"user-123\",\n  \"role\": \"investor\",\n  \"walletId\": \"...\",\n  \"summary\": {\n    \"totalUSDC\": 16.986759,\n    \"totalUSDCE6\": \"16986759\",\n    \"chainsCount\": 4,\n    \"assetsCount\": 5\n  },\n  \"balancesByChain\": {\n    \"ARC-TESTNET\": [...],\n    \"ARB-SEPOLIA\": [...],\n    \"MATIC-AMOY\": [...],\n    \"ETH-SEPOLIA\": [...]\n  }\n}\n```"
           }
         },
         {
-          "name": "Get Issuer Wallet Balance",
+          "name": "Get Unified USDC Balance (Cross-Chain)",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/wallets/{{issuerUserId}}/balance?role=issuer",
+              "raw": "{{baseUrl}}/wallets/{{userId}}/balance/usdc?role=investor&chains=ARC-TESTNET,ETH-SEPOLIA,BASE-SEPOLIA,AVAX-FUJI",
               "host": ["{{baseUrl}}"],
-              "path": ["wallets", "{{issuerUserId}}", "balance"],
+              "path": ["wallets", "{{userId}}", "balance", "usdc"],
               "query": [
                 {
                   "key": "role",
-                  "value": "issuer"
+                  "value": "investor",
+                  "description": "investor (default), issuer, or admin"
+                },
+                {
+                  "key": "chains",
+                  "value": "ARC-TESTNET,ETH-SEPOLIA,BASE-SEPOLIA,AVAX-FUJI",
+                  "description": "Comma-separated chain list (optional, defaults to all chains)"
                 }
               ]
-            }
+            },
+            "description": "Get unified USDC balance across multiple chains using Circle Gateway API.\n\n**Supported Chains**:\n- ARC-TESTNET (domain 26)\n- ETH-SEPOLIA (domain 0)\n- BASE-SEPOLIA (domain 6)\n- AVAX-FUJI (domain 1)\n\n**Returns**:\n```json\n{\n  \"userId\": \"user-123\",\n  \"role\": \"investor\",\n  \"walletId\": \"...\",\n  \"depositorAddress\": \"0x...\",\n  \"totalBalanceE6\": \"50000000\",\n  \"totalBalanceUSDC\": \"50.000000\",\n  \"balancesByChain\": [\n    {\n      \"chain\": \"ARC-TESTNET\",\n      \"domain\": 26,\n      \"balanceE6\": \"20000000\",\n      \"balanceUSDC\": \"20.000000\"\n    },\n    {\n      \"chain\": \"ETH-SEPOLIA\",\n      \"domain\": 0,\n      \"balanceE6\": \"30000000\",\n      \"balanceUSDC\": \"30.000000\"\n    }\n  ]\n}\n```\n\n**Use Case**: \n- Cross-chain funding pages\n- Unified USDC balance display\n- Gateway transfer preparation"
+          }
+        },
+        {
+          "name": "Get ARC USDC Balance & Allowance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{userId}}/balance/arc?role=investor",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{userId}}", "balance", "arc"],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "investor",
+                  "description": "investor (default), issuer, or admin"
+                }
+              ]
+            },
+            "description": "Get USDC balance and allowance on ARC-TESTNET chain (via blockchain query).\n\n**Returns**:\n```json\n{\n  \"userId\": \"user-123\",\n  \"role\": \"investor\",\n  \"walletId\": \"...\",\n  \"chain\": \"ARC-TESTNET\",\n  \"address\": \"0x...\",\n  \"balance\": {\n    \"balanceE6\": \"100000000\",\n    \"balanceUSDC\": \"100.000000\"\n  },\n  \"allowance\": {\n    \"allowanceE6\": \"50000000\",\n    \"allowanceUSDC\": \"50.000000\"\n  }\n}\n```\n\n**Use Case**: \n- Investment subscription pages\n- Check USDC balance before subscribing\n- Verify allowance for Ledger contract\n- Arc-specific operations"
           }
         }
       ]
@@ -670,7 +710,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["portfolio", "{{userId}}"]
             },
-            "description": "Get user holdings, balances, and pending dividends"
+            "description": "Get user holdings, balances, and pending dividends.\n\n**Note**: For wallet balance and allowance queries, use the Wallet Management APIs:\n- GET /wallets/:userId/balance/usdc - Unified USDC across chains\n- GET /wallets/:userId/balance/arc - ARC chain USDC + allowance"
           }
         },
         {
@@ -682,50 +722,12 @@
               "raw": "{{baseUrl}}/portfolio/{{userId}}/product/{{productId}}",
               "host": ["{{baseUrl}}"],
               "path": ["portfolio", "{{userId}}", "product", "{{productId}}"]
-            }
-          }
-        },
-        {
-          "name": "Get USDC Balance",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/portfolio/{{userId}}/usdc-balance?role=investor",
-              "host": ["{{baseUrl}}"],
-              "path": ["portfolio", "{{userId}}", "usdc-balance"],
-              "query": [
-                {
-                  "key": "role",
-                  "value": "investor",
-                  "description": "investor (default) or issuer"
-                }
-              ]
             },
-            "description": "Get user's USDC balance on ARC-TESTNET"
-          }
-        },
-        {
-          "name": "Get USDC Allowance",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/portfolio/{{userId}}/usdc-allowance?role=investor",
-              "host": ["{{baseUrl}}"],
-              "path": ["portfolio", "{{userId}}", "usdc-allowance"],
-              "query": [
-                {
-                  "key": "role",
-                  "value": "investor",
-                  "description": "investor (default) or issuer"
-                }
-              ]
-            },
-            "description": "Get USDC allowance approved for the ledger contract"
+            "description": "Get user's holdings and pending dividends for a specific product."
           }
         }
-      ]
+      ],
+      "description": "Portfolio APIs focus on investment holdings and product-specific data. For wallet balance and allowance queries, use Wallet Management APIs."
     },
     {
       "name": "Health Check",

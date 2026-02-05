@@ -3,14 +3,13 @@ import { JwtService } from '@nestjs/jwt';
 import { SiweMessage } from 'siwe';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { UsersService, WalletRole } from '../users/users.service';
+import { UsersService, WalletRole, ChainWallet } from '../users/users.service';
 
 interface UserWallet {
   userId: string;
-  walletId: string;
   role: string;
-  circleWallet?: {
-    [blockchain: string]: string;
+  circleWallet: {
+    [blockchain: string]: ChainWallet;
   };
   externalWallets?: string[]; // Array of address strings
   lastLogin?: string;

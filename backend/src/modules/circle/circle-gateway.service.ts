@@ -22,6 +22,15 @@ export class CircleGatewayService {
   private readonly gatewayWalletAddress = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9';
   private readonly gatewayMinterAddress = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B';
   private readonly gatewayApiUrl = 'https://gateway-api-testnet.circle.com/v1/transfer';
+  private readonly gatewayBalanceApiUrl = 'https://gateway-api-testnet.circle.com/v1/balances';
+  
+  // Chain domain mapping for Circle Gateway
+  private readonly chainDomains = {
+    'ETH-SEPOLIA': { domain: 0, name: 'Ethereum Sepolia' },
+    'AVAX-FUJI': { domain: 1, name: 'Avalanche Fuji' },
+    'BASE-SEPOLIA': { domain: 6, name: 'Base Sepolia' },
+    'ARC-TESTNET': { domain: 26, name: 'Arc Testnet' },
+  };
   
   // EIP-712 type definitions
   private readonly eip712Domain = [
@@ -490,5 +499,121 @@ export class CircleGatewayService {
       attestation: result.attestation,
       mintTxId,
     };
+  }
+
+  /**
+   * Query unified USDC balance across multiple chains using Circle Gateway API
+   * @param depositorAddress - The wallet address to query
+   * @param chains - Optional list of chains to query (defaults to all supported chains)
+   * @returns Unified balance information
+   */
+  async getUnifiedUSDCBalance(
+    depositorAddress: string,
+    chains?: string[],
+  ): Promise<{
+    totalBalanceE6: string;
+    totalBalanceUSDC: string;
+    balancesByChain: Array<{
+      chain: string;
+      domain: number;
+      balanceE6: string;
+      balanceUSDC: string;
+    }>;
+  }> {
+    this.logger.log(`Querying unified USDC balance for ${depositorAddress}`);
+    
+    // Determine which chains to query
+    const chainsToQuery = chains || Object.keys(this.chainDomains);
+    const sources = chainsToQuery.map(chain => {
+      const chainInfo = this.chainDomains[chain as keyof typeof this.chainDomains];
+      if (!chainInfo) {
+        throw new Error(`Unsupported chain: ${chain}`);
+      }
+      return {
+        domain: chainInfo.domain,
+        depositor: depositorAddress,
+      };
+    });
+    
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(
+          this.gatewayBalanceApiUrl,
+          {
+            token: 'USDC',
+            sources,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+      
+      const { balances = [] } = response.data;
+      
+      let totalBalanceE6 = 0n;
+      const balancesByChain: Array<{
+        chain: string;
+        domain: number;
+        balanceE6: string;
+        balanceUSDC: string;
+      }> = [];
+      
+      for (const balance of balances) {
+        const amountE6 = this.toBigInt(balance?.balance);
+        const domain = balance?.domain as number;
+        
+        // Find chain name by domain
+        const chainEntry = Object.entries(this.chainDomains).find(
+          ([, info]) => info.domain === domain,
+        );
+        const chainName = chainEntry?.[0] || `Domain-${domain}`;
+        
+        const amountUSDC = Number(amountE6) / 1_000_000;
+        
+        balancesByChain.push({
+          chain: chainName,
+          domain,
+          balanceE6: amountE6.toString(),
+          balanceUSDC: amountUSDC.toFixed(6),
+        });
+        
+        totalBalanceE6 += amountE6;
+        
+        this.logger.log(
+          `  - ${chainName}: ${amountUSDC.toFixed(6)} USDC`,
+        );
+      }
+      
+      const totalBalanceUSDC = (Number(totalBalanceE6) / 1_000_000).toFixed(6);
+      this.logger.log(`Unified USDC balance: ${totalBalanceUSDC} USDC`);
+      
+      return {
+        totalBalanceE6: totalBalanceE6.toString(),
+        totalBalanceUSDC,
+        balancesByChain,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Failed to query unified USDC balance',
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
+  }
+  
+  /**
+   * Convert string/number to BigInt (handles decimal values)
+   */
+  private toBigInt(value: string | number | null | undefined): bigint {
+    const balanceString = String(value ?? '0');
+    if (balanceString.includes('.')) {
+      const [whole, decimal = ''] = balanceString.split('.');
+      const decimal6 = (decimal + '000000').slice(0, 6);
+      return BigInt((whole || '0') + decimal6);
+    }
+    return BigInt(balanceString || '0');
   }
 }

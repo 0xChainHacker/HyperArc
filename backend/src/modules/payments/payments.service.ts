@@ -167,6 +167,12 @@ export class PaymentsService {
       await this.arcContractService.getUSDCAllowance(arcAddress),
     );
 
+    // Get ARC-TESTNET walletId
+    const arcWalletId = userWallet.circleWallet['ARC-TESTNET']?.walletId;
+    if (!arcWalletId) {
+      throw new BadRequestException('Wallet does not have ARC-TESTNET chain configured');
+    }
+
     let approveTxId: string | null = null;
     let approveTxHash: string | null = null;
     if (allowanceE6 < actualAmountE6) {
@@ -174,7 +180,7 @@ export class PaymentsService {
         `Allowance too low: allowance=${allowanceE6.toString()} need=${actualAmountE6.toString()} => approving...`,
       );
       const approveRes = await this.arcContractService.approveUSDC(
-        userWallet.walletId,
+        arcWalletId,
         actualAmountE6.toString(),
       );
       approveTxId = approveRes.txId;
@@ -189,7 +195,7 @@ export class PaymentsService {
     // 5) Subscribe
     //    ✅ 建議直接用 actualAmountE6 呼叫 subscribe（避免「非整數倍」帶來 debug 困擾）
     const subscribeRes = await this.arcContractService.subscribe(
-      userWallet.walletId,
+      arcWalletId,
       dto.productId,
       actualAmountE6.toString(),
     );
@@ -262,9 +268,15 @@ export class PaymentsService {
       );
     }
 
+    // Get ARC-TESTNET walletId for issuer
+    const arcWalletId = issuerWallet.circleWallet['ARC-TESTNET']?.walletId;
+    if (!arcWalletId) {
+      throw new BadRequestException('Issuer wallet does not have ARC-TESTNET chain configured');
+    }
+
     // Approve USDC to distributor contract
     const approveRes = await this.arcContractService.approveUSDCForDistributor(
-      issuerWallet.walletId,
+      arcWalletId,
       dto.amountE6,
     );
     this.logger.log(
@@ -273,7 +285,7 @@ export class PaymentsService {
 
     // Declare dividend
     const declareRes = await this.arcContractService.declareDividend(
-      issuerWallet.walletId,
+      arcWalletId,
       dto.productId,
       dto.amountE6,
     );
@@ -306,13 +318,16 @@ export class PaymentsService {
       WalletRole.INVESTOR,
       ['ARC-TESTNET']
     );
-    const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
-
-    if (!arcAddress) {
+    
+    // Get ARC-TESTNET wallet info
+    const arcWallet = userWallet.circleWallet['ARC-TESTNET'];
+    if (!arcWallet) {
       throw new BadRequestException(
         'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
       );
     }
+    const arcAddress = arcWallet.address;
+    const arcWalletId = arcWallet.walletId;
 
     // Check pending dividend
     const pending = await this.arcContractService.getPendingDividend(productId, arcAddress);
@@ -325,7 +340,7 @@ export class PaymentsService {
 
     // Claim dividend via blockchain transaction
     const claimRes = await this.arcContractService.claimDividend(
-      userWallet.walletId,
+      arcWalletId,
       productId,
     );
 

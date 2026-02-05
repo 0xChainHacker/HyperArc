@@ -42,29 +42,44 @@ export class UsersController {
   }
 
   /**
-   * Get wallet balance (aggregated USDC across all chains)
+   * Get wallet balance - all assets on all chains (via Circle Wallet API)
    * GET /wallets/:userId/balance?role=investor
    */
   @Get(':userId/balance')
-  async getBalance(
-    @Param('userId') userId: string,
-    @Query('role') role: string = 'investor',
-  ) {
-    const walletRole = this.parseRole(role);
-    return this.usersService.getWalletBalance(userId, walletRole);
-  }
-
-  /**
-   * Get detailed wallet balance (per-chain, all assets)
-   * GET /wallets/:userId/balance/detailed?role=investor
-   */
-  @Get(':userId/balance/detailed')
-  async getDetailedBalance(
+  async getAllAssetBalance(
     @Param('userId') userId: string,
     @Query('role') role: string = 'investor',
   ) {
     const walletRole = this.parseRole(role);
     return this.usersService.getDetailedWalletBalance(userId, walletRole);
+  }
+
+  /**
+   * Get unified USDC balance across multiple chains (via Circle Gateway API)
+   * GET /wallets/:userId/balance/usdc?role=investor&chains=ARC-TESTNET,ETH-SEPOLIA
+   */
+  @Get(':userId/balance/usdc')
+  async getUnifiedUSDCBalance(
+    @Param('userId') userId: string,
+    @Query('role') role: string = 'investor',
+    @Query('chains') chains?: string,
+  ) {
+    const walletRole = this.parseRole(role);
+    const chainList = chains ? chains.split(',').map(c => c.trim()) : undefined;
+    return this.usersService.getUnifiedUSDCBalance(userId, walletRole, chainList);
+  }
+
+  /**
+   * Get USDC balance on ARC-TESTNET chain (via blockchain query)
+   * GET /wallets/:userId/balance/arc?role=investor
+   */
+  @Get(':userId/balance/arc')
+  async getArcUSDCBalance(
+    @Param('userId') userId: string,
+    @Query('role') role: string = 'investor',
+  ) {
+    const walletRole = this.parseRole(role);
+    return this.usersService.getArcUSDCBalance(userId, walletRole);
   }
 
   /**
