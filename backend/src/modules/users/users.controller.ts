@@ -23,23 +23,26 @@ export class UsersController {
 
   /**
    * Get specific role wallet for user
-   * GET /wallets/:userId?role=issuer
+   * GET /wallets/:userId?role=issuer&includeBalance=true
    */
   @Get(':userId')
   async getWallet(
     @Param('userId') userId: string,
     @Query('role') role?: string,
+    @Query('includeBalance') includeBalance?: string,
   ) {
+    const shouldIncludeBalance = includeBalance === 'true';
+    
     if (role) {
       const walletRole = this.parseRole(role);
-      return this.usersService.getUserWallet(userId, walletRole);
+      return this.usersService.getUserWallet(userId, walletRole, shouldIncludeBalance);
     }
     
-    return this.usersService.getUserWallets(userId);
+    return this.usersService.getUserWallets(userId, shouldIncludeBalance);
   }
 
   /**
-   * Get wallet balance
+   * Get wallet balance (aggregated USDC across all chains)
    * GET /wallets/:userId/balance?role=investor
    */
   @Get(':userId/balance')
@@ -49,6 +52,19 @@ export class UsersController {
   ) {
     const walletRole = this.parseRole(role);
     return this.usersService.getWalletBalance(userId, walletRole);
+  }
+
+  /**
+   * Get detailed wallet balance (per-chain, all assets)
+   * GET /wallets/:userId/balance/detailed?role=investor
+   */
+  @Get(':userId/balance/detailed')
+  async getDetailedBalance(
+    @Param('userId') userId: string,
+    @Query('role') role: string = 'investor',
+  ) {
+    const walletRole = this.parseRole(role);
+    return this.usersService.getDetailedWalletBalance(userId, walletRole);
   }
 
   /**

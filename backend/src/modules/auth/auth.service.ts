@@ -126,7 +126,7 @@ export class AuthService {
 
       // Check if user exists in user-wallets.json
       console.log('Looking up user by address:', address);
-      let userWallet = await this.findUserByAddress(address);
+      let userWallet = this.usersService.findUserByAddress(address);
       
       if (!userWallet) {
         console.log('User not found for address:', address);
@@ -145,11 +145,11 @@ export class AuthService {
           console.log('Wallet created for user:', userId);
           
           // Link the external MetaMask wallet
-          await this.linkExternalWallet(userId, address);
+          await this.usersService.linkExternalWallet(userId, WalletRole.INVESTOR, address);
           console.log('External wallet linked:', address);
           
           // Retrieve the newly created user wallet
-          userWallet = await this.findUserByAddress(address);
+          userWallet = this.usersService.findUserByAddress(address);
           
           if (!userWallet) {
             throw new Error('Wallet created but not found in storage');
@@ -171,7 +171,7 @@ export class AuthService {
       });
 
       // Update last login time
-      await this.updateLastLogin(userWallet.userId);
+      await this.usersService.updateLastLogin(userWallet.userId, userWallet.role);
       console.log('Last login updated');
 
       // Generate JWT
@@ -209,74 +209,27 @@ export class AuthService {
   }
 
   /**
-   * Find user by wallet address (supports both Circle wallet and external wallets)
+   * Find user by wallet address (delegated to UsersService)
    */
-  private async findUserByAddress(address: string): Promise<UserWallet | null> {
-    try {
-      const fileContent = await fs.readFile(this.userWalletsPath, 'utf-8');
-      const wallets: UserWallet[] = JSON.parse(fileContent);
-      
-      const normalizedAddress = address.toLowerCase();
-      
-      return wallets.find(wallet => {
-        // Check Circle wallet
-        if (wallet.circleWallet['ARC-TESTNET']?.toLowerCase() === normalizedAddress) {
-          return true;
-        }
-        // Check external wallets (array of strings)
-        return wallet.externalWallets?.some(
-          ext => ext?.toLowerCase() === normalizedAddress
-        );
-      }) || null;
-    } catch (error) {
-      console.error('Error reading user wallets:', error);
-      return null;
-    }
+  private findUserByAddress(address: string): UserWallet | null {
+    return this.usersService.findUserByAddress(address);
   }
 
   /**
-   * Link external wallet to user account
+   * Link external wallet to user account (delegated to UsersService)
    */
   async linkExternalWallet(userId: string, address: string): Promise<boolean> {
     try {
-      const fileContent = await fs.readFile(this.userWalletsPath, 'utf-8');
-      const wallets: UserWallet[] = JSON.parse(fileContent);
-      
-      const wallet = wallets.find(w => w.userId === userId);
-      if (!wallet) {
-        return false;
-      }
-
       const normalizedAddress = address.toLowerCase();
       
-      // Check if address is already linked to this or another user
-      const existingUser = await this.findUserByAddress(normalizedAddress);
+      // Check if address is already linked to another user
+      const existingUser = this.usersService.findUserByAddress(normalizedAddress);
       if (existingUser && existingUser.userId !== userId) {
         throw new Error('Address already linked to another account');
       }
 
-      // Check if already linked to this user
-      const alreadyLinked = wallet.externalWallets?.some(
-        ext => ext.toLowerCase() === normalizedAddress
-      );
-      if (alreadyLinked) {
-        return true;
-      }
-
-      // Add external wallet
-      if (!wallet.externalWallets) {
-        wallet.externalWallets = [];
-      }
-      wallet.externalWallets.push(normalizedAddress);
-
-      // Save back to file
-      await fs.writeFile(
-        this.userWalletsPath,
-        JSON.stringify(wallets, null, 2),
-        'utf-8'
-      );
-
-      return true;
+      // Link wallet (assumes investor role for now)
+      return await this.usersService.linkExternalWallet(userId, WalletRole.INVESTOR, normalizedAddress);
     } catch (error) {
       console.error('Error linking external wallet:', error);
       throw error;
@@ -284,22 +237,11 @@ export class AuthService {
   }
 
   /**
-   * Update last login time
+   * Update last login time (delegated to UsersService)
    */
-  private async updateLastLogin(userId: string): Promise<void> {
+  private async updateLastLogin(userId: string, role: WalletRole): Promise<void> {
     try {
-      const fileContent = await fs.readFile(this.userWalletsPath, 'utf-8');
-      const wallets: UserWallet[] = JSON.parse(fileContent);
-      
-      const wallet = wallets.find(w => w.userId === userId);
-      if (wallet) {
-        wallet.lastLogin = new Date().toISOString();
-        await fs.writeFile(
-          this.userWalletsPath,
-          JSON.stringify(wallets, null, 2),
-          'utf-8'
-        );
-      }
+      await this.usersService.updateLastLogin(userId, role);
     } catch (error) {
       console.error('Error updating last login:', error);
     }

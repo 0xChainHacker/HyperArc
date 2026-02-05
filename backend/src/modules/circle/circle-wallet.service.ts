@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { initiateDeveloperControlledWalletsClient, Blockchain } from '@circle-fin/developer-controlled-wallets';
+import { initiateDeveloperControlledWalletsClient, Blockchain, EvmBlockchain } from '@circle-fin/developer-controlled-wallets';
 import { CircleWallet, CircleTransaction } from './circle.types';
 
 export interface WalletWithAddresses {
@@ -184,13 +184,47 @@ export class CircleWalletService {
   }
 
   /**
+   * Derive wallet on a new blockchain
+   * Adds a new blockchain to existing wallet without creating a new wallet ID
+   */
+  async deriveWallet(walletId: string, blockchain: string): Promise<string> {
+    this.logger.log(`Deriving wallet ${walletId} on blockchain: ${blockchain}`);
+    try {
+      const response = await this.circleDeveloperSdk.deriveWallet({
+        id: walletId,
+        blockchain: blockchain as EvmBlockchain,
+      });
+      
+      const address = response.data?.wallet?.address;
+      
+      if (!address) {
+        throw new Error('Failed to derive wallet: No address returned');
+      }
+      
+      this.logger.log(`Wallet ${walletId} derived on ${blockchain}: ${address}`);
+      return address;
+    } catch (error) {
+      this.logger.error(
+        `Failed to derive wallet ${walletId} on ${blockchain}`,
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Get wallet balance
    */
   async getWalletBalance(walletId: string) {
     this.logger.log(`Getting balance for wallet: ${walletId}`);
     try {
       const response = await this.circleDeveloperSdk.getWalletTokenBalance({ id: walletId });
-      return response.data?.tokenBalances || [];
+      const tokenBalances = response.data?.tokenBalances || [];
+      
+      // Debug logging to see actual response structure
+      this.logger.debug(`Raw tokenBalances response:`, JSON.stringify(tokenBalances, null, 2));
+      
+      return tokenBalances;
     } catch (error) {
       this.logger.error(`Failed to get wallet balance for ${walletId}`, error.response?.data || error.message);
       throw error;
