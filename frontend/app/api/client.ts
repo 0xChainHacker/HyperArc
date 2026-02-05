@@ -50,6 +50,32 @@ class HyperArcAPI {
     this.baseUrl = baseUrl;
   }
 
+  // Authentication
+  async getNonce(): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/auth/nonce`);
+    if (!response.ok) throw new Error('Failed to get nonce');
+    const data = await response.json();
+    return data.nonce;
+  }
+
+  async verifySiwe(message: string, signature: string): Promise<{
+    accessToken: string;
+    userId: string;
+    role: string;
+    address: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, signature }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'SIWE verification failed');
+    }
+    return response.json();
+  }
+
   // Wallet Management
   async createWallet(userId: string, role: 'investor' | 'issuer' | 'admin' = 'investor', blockchains: string = 'ARC-TESTNET'): Promise<WalletInfo> {
     const response = await fetch(`${this.baseUrl}/wallets/${userId}?role=${role}&blockchains=${blockchains}`, {

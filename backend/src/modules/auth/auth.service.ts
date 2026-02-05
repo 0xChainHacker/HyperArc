@@ -3,16 +3,19 @@ import { JwtService } from '@nestjs/jwt';
 import { SiweMessage } from 'siwe';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { UsersService, WalletRole } from '../users/users.service';
 
 interface UserWallet {
   userId: string;
   walletId: string;
   role: string;
-  circleWallet: {
-    'ARC-TESTNET': string;
+  circleWallet?: {
+    [blockchain: string]: string;
   };
-  externalWallets: string[]; // Array of address strings
+  externalWallets?: string[]; // Array of address strings
   lastLogin?: string;
+  state?: string;
+  createdAt?: string;
 }
 
 @Injectable()
@@ -21,7 +24,10 @@ export class AuthService {
   private readonly NONCE_EXPIRY = 5 * 60 * 1000; // 5 minutes
   private readonly userWalletsPath = path.join(process.cwd(), 'data', 'user-wallets.json');
 
-  constructor(private jwtService: JwtService) {
+  constructor(
+    private jwtService: JwtService,
+    private usersService: UsersService,
+  ) {
     // Clean up expired nonces every minute
     setInterval(() => this.cleanExpiredNonces(), 60 * 1000);
   }
@@ -120,11 +126,43 @@ export class AuthService {
 
       // Check if user exists in user-wallets.json
       console.log('Looking up user by address:', address);
-      const userWallet = await this.findUserByAddress(address);
+      let userWallet = await this.findUserByAddress(address);
       
       if (!userWallet) {
         console.log('User not found for address:', address);
-        throw new NotFoundException('User wallet not found. Please create a wallet first.');
+        console.log('Auto-creating new user wallet...');
+        
+        try {
+          // Generate userId based on address
+          const userId = `user-${address.slice(2, 10)}`;
+          
+          // Use UsersService to create wallet (handles Circle wallet and JSON updates)
+          await this.usersService.getOrCreateWallet(
+            userId,
+            WalletRole.INVESTOR,
+            ['ARC-TESTNET', 'ARB-SEPOLIA', 'MATIC-AMOY', 'ETH-SEPOLIA']
+          );
+          console.log('Wallet created for user:', userId);
+          
+          // Link the external MetaMask wallet
+          await this.linkExternalWallet(userId, address);
+          console.log('External wallet linked:', address);
+          
+          // Retrieve the newly created user wallet
+          userWallet = await this.findUserByAddress(address);
+          
+          if (!userWallet) {
+            throw new Error('Wallet created but not found in storage');
+          }
+          
+          console.log('New user wallet created:', {
+            userId: userWallet.userId,
+            role: userWallet.role,
+          });
+        } catch (createError) {
+          console.error('Failed to create user wallet:', createError);
+          throw new NotFoundException('User wallet not found and auto-creation failed');
+        }
       }
       
       console.log('User found:', {

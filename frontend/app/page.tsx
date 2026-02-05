@@ -14,9 +14,8 @@ export default function Home() {
   const [investorTab, setInvestorTab] = useState<InvestorTab>('products');
   const [issuerTab, setIssuerTab] = useState<IssuerTab>('my-products');
   
-  // User ID - in production, this would come from authentication
-  const [userId] = useState('user123');
-  const [issuerUserId] = useState('spv-001');
+  // User ID - obtained from SIWE authentication
+  const [userId, setUserId] = useState<string | null>(null);
   
   // State for API data
   const [products, setProducts] = useState<Product[]>([]);
@@ -51,25 +50,38 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      // Load wallet balance
-      const currentUserId = userRole === 'investor' ? userId : issuerUserId;
-      const balanceData = await api.getWalletBalance(currentUserId, userRole);
-      setWalletBalance(balanceData?.balanceUSD || 0);
+      // Load wallet balance only if user is authenticated
+      if (walletConnected && userId) {
+        const balanceData = await api.getWalletBalance(userId, userRole);
+        setWalletBalance(balanceData?.balanceUSD || 0);
+      } else {
+        setWalletBalance(0);
+      }
 
       if (userRole === 'investor') {
-        // Load products and portfolio for investors
+        // Load products for investors (public data)
         const productsData = await api.listProducts();
         setProducts(productsData);
         
-        const portfolioData = await api.getUserPortfolio(userId);
-        setPortfolio(portfolioData.holdings);
+        // Load portfolio only if authenticated
+        if (walletConnected && userId) {
+          const portfolioData = await api.getUserPortfolio(userId);
+          setPortfolio(portfolioData.holdings);
+        } else {
+          setPortfolio([]);
+        }
       } else {
-        // Load products and pending products for issuers
+        // Load products (public data)
         const productsData = await api.listProducts();
         setProducts(productsData);
         
-        const pendingData = await api.getPendingProducts();
-        setPendingProducts(pendingData);
+        // Load pending products only if authenticated
+        if (walletConnected && userId) {
+          const pendingData = await api.getPendingProducts();
+          setPendingProducts(pendingData);
+        } else {
+          setPendingProducts([]);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -80,6 +92,10 @@ export default function Home() {
   };
 
   const handleSubscribe = async (productId: number, amount: number) => {
+    if (!userId) {
+      alert('Please connect your wallet first');
+      return;
+    }
     try {
       const amountE6 = (amount * 1_000_000).toString();
       await api.subscribe(userId, productId, amountE6);
@@ -91,6 +107,10 @@ export default function Home() {
   };
 
   const handleClaimDividend = async (productId: number) => {
+    if (!userId) {
+      alert('Please connect your wallet first');
+      return;
+    }
     try {
       await api.claimDividend(userId, productId);
       alert('Dividend claimed successfully!');
@@ -101,9 +121,13 @@ export default function Home() {
   };
 
   const handleDeclareDividend = async (productId: number, amount: number) => {
+    if (!userId) {
+      alert('Please connect your wallet first');
+      return;
+    }
     try {
       const amountE6 = (amount * 1_000_000).toString();
-      await api.declareDividend(issuerUserId, productId, amountE6);
+      await api.declareDividend(userId, productId, amountE6);
       alert('Dividend declared successfully!');
       loadData();
     } catch (err) {
@@ -112,9 +136,13 @@ export default function Home() {
   };
 
   const handleDeactivateProduct = async (productId: number) => {
+    if (!userId) {
+      alert('Please connect your wallet first');
+      return;
+    }
     if (!confirm('Are you sure you want to deactivate this product?')) return;
     try {
-      await api.deactivateProduct(productId, issuerUserId);
+      await api.deactivateProduct(productId, userId);
       alert('Product deactivated successfully!');
       loadData();
     } catch (err) {
@@ -123,9 +151,13 @@ export default function Home() {
   };
 
   const handleWithdrawFunds = async (productId: number, amount: number) => {
+    if (!userId) {
+      alert('Please connect your wallet first');
+      return;
+    }
     try {
       const amountE6 = (amount * 1_000_000).toString();
-      await api.withdrawFunds(productId, issuerUserId, amountE6);
+      await api.withdrawFunds(productId, userId, amountE6);
       alert('Funds withdrawn successfully!');
       loadData();
     } catch (err) {
@@ -135,11 +167,15 @@ export default function Home() {
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userId) {
+      alert('Please connect your wallet first');
+      return;
+    }
     try {
       const priceE6 = (parseFloat(newProduct.price) * 1_000_000).toString();
       
       // Get issuer wallet address
-      const wallet = await api.getWallet(issuerUserId, 'issuer') as any;
+      const wallet = await api.getWallet(userId, 'issuer') as any;
       const issuerAddress = wallet.addresses?.[0]?.address || '0x0000000000000000000000000000000000000000';
       
       await api.createProduct({
@@ -148,7 +184,7 @@ export default function Home() {
         issuerAddress,
         priceE6,
         metadataURI: `ipfs://metadata-${Date.now()}`, // Placeholder
-        issuerUserId,
+        issuerUserId: userId,
       });
       
       alert('Product created and submitted for approval!');
@@ -202,11 +238,7 @@ export default function Home() {
       console.log('Starting SIWE login for address:', address);
 
       // 1. Get nonce from backend
-      const nonceResponse = await fetch('http://localhost:3001/auth/nonce');
-      if (!nonceResponse.ok) {
-        throw new Error('Failed to get nonce from server');
-      }
-      const { nonce } = await nonceResponse.json();
+      const nonce = await api.getNonce();
       console.log('Received nonce:', nonce);
 
       // 2. Create SIWE message
@@ -230,31 +262,23 @@ export default function Home() {
       const signature = await signer.signMessage(messageString);
       console.log('Signature:', signature);
 
-      // 4. Verify signature with backend
-      const verifyResponse = await fetch('http://localhost:3001/auth/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: messageString,
-          signature: signature
-        })
+      // 4. Verify signature with backend (auto-creates wallet if needed)
+      const authResult = await api.verifySiwe(messageString, signature);
+      console.log('SIWE login successful!', { 
+        userId: authResult.userId, 
+        role: authResult.role 
       });
-
-      if (!verifyResponse.ok) {
-        const errorData = await verifyResponse.json();
-        throw new Error(errorData.message || 'SIWE verification failed');
-      }
-
-      const { accessToken, user } = await verifyResponse.json();
-      console.log('SIWE login successful!', user);
       
-      // Store the JWT token
-      setAuthToken(accessToken);
-      localStorage.setItem('authToken', accessToken);
+      // Store the JWT token and userId
+      setAuthToken(authResult.accessToken);
+      setUserId(authResult.userId);
+      localStorage.setItem('authToken', authResult.accessToken);
+      localStorage.setItem('userId', authResult.userId);
       
-      alert(`Successfully logged in as ${address}`);
+      alert(`Successfully logged in!\nUser ID: ${authResult.userId}\nRole: ${authResult.role}`);
+      
+      // Reload data with authenticated userId
+      await loadData();
       
     } catch (err) {
       console.error('SIWE login error:', err);
@@ -263,18 +287,20 @@ export default function Home() {
   };
 
   const handleGetCircleWallet = async () => {
+    if (!userId) {
+      console.warn('No userId available, skipping Circle wallet fetch');
+      return;
+    }
     try {
-      const currentUserId = userRole === 'investor' ? userId : issuerUserId;
-      
       // Try to get existing wallet first
       let wallet: any;
       try {
-        wallet = await api.getWallet(currentUserId, userRole);
+        wallet = await api.getWallet(userId, userRole);
         console.log('Existing Circle wallet:', wallet);
       } catch (err) {
         // If wallet doesn't exist, create one
-        console.log('Creating new Circle wallet for user:', currentUserId);
-        wallet = await api.createWallet(currentUserId, userRole, 'ARC-TESTNET');
+        console.log('Creating new Circle wallet for user:', userId);
+        wallet = await api.createWallet(userId, userRole, 'ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY,ETH-SEPOLIA');
         console.log('Created Circle wallet:', wallet);
       }
       
@@ -308,6 +334,12 @@ export default function Home() {
     setWalletAddress(null);
     setMetamaskAddress(null);
     setCircleWalletAddress(null);
+    setUserId(null);
+    setAuthToken(null);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userId');
+    // Reload data to show public view
+    loadData();
   };
 
   return (
