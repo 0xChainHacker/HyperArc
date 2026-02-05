@@ -431,14 +431,15 @@ export default function Home() {
                 Investment Products
               </button>
               <button
-                onClick={() => setInvestorTab('portfolio')}
+                onClick={() => walletConnected && setInvestorTab('portfolio')}
+                disabled={!walletConnected}
                 className={`px-6 py-3 rounded-lg font-medium transition-all ${
                   investorTab === 'portfolio'
                     ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-md'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50'
-                }`}
+                } ${!walletConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                My Portfolio
+                My Portfolio {!walletConnected && '🔒'}
               </button>
             </div>
 
@@ -619,24 +620,26 @@ export default function Home() {
                 My Products
               </button>
               <button
-                onClick={() => setIssuerTab('create')}
+                onClick={() => walletConnected && setIssuerTab('create')}
+                disabled={!walletConnected}
                 className={`px-6 py-3 rounded-lg font-medium transition-all ${
                   issuerTab === 'create'
                     ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-md'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50'
-                }`}
+                } ${!walletConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                Create Product
+                Create Product {!walletConnected && '🔒'}
               </button>
               <button
-                onClick={() => setIssuerTab('pending')}
+                onClick={() => walletConnected && setIssuerTab('pending')}
+                disabled={!walletConnected}
                 className={`px-6 py-3 rounded-lg font-medium transition-all ${
                   issuerTab === 'pending'
                     ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-md'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50'
-                }`}
+                } ${!walletConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                Pending Approval
+                Pending Approval {!walletConnected && '🔒'}
               </button>
             </div>
 
@@ -665,19 +668,21 @@ export default function Home() {
                               const amount = prompt('Enter dividend amount in USDC:');
                               if (amount) handleDeclareDividend(product.id, parseFloat(amount));
                             }}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                            disabled={!walletConnected}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
                           >
                             Declare Dividend
                           </button>
                           {product.active ? (
                             <button 
                               onClick={() => handleDeactivateProduct(product.id)}
-                              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors"
+                              disabled={!walletConnected}
+                              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
                             >
                               Deactivate
                             </button>
                           ) : (
-                            <button className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                            <button disabled={!walletConnected} className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors">
                               Refund Investors
                             </button>
                           )}
@@ -688,25 +693,25 @@ export default function Home() {
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Units</p>
                           <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                            {product.totalUnits || 0}
+                            {walletConnected ? (product.totalUnits || 0) : 0}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Sold Units</p>
                           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                            {product.soldUnits || 0}
+                            {walletConnected ? (product.soldUnits || 0) : 0}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Raised</p>
                           <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                            ${((product.soldUnits || 0) * (product.price || 0)).toFixed(2)}
+                            ${walletConnected ? ((product.soldUnits || 0) * (product.price || 0)).toFixed(2) : '0.00'}
                           </p>
                         </div>
                         <div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Available to Withdraw</p>
                           <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                            ${((product.soldUnits || 0) * (product.price || 0)).toFixed(2)}
+                            ${walletConnected ? ((product.soldUnits || 0) * (product.price || 0)).toFixed(2) : '0.00'}
                           </p>
                         </div>
                       </div>
@@ -718,7 +723,8 @@ export default function Home() {
                           const amount = prompt('Enter amount to withdraw in USDC:');
                           if (amount) handleWithdrawFunds(product.id, parseFloat(amount));
                         }}
-                        className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium transition-all"
+                        disabled={!walletConnected}
+                        className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
                       >
                         Withdraw Subscription Funds
                       </button>
