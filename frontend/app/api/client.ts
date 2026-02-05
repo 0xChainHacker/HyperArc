@@ -92,6 +92,25 @@ class HyperArcAPI {
     return response.json();
   }
 
+  async linkExternalWallet(message: string, signature: string, token: string): Promise<{
+    success: boolean;
+    address: string;
+  }> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/auth/link-wallet`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ message, signature }),
+    }));
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to link wallet');
+    }
+    return response.json();
+  }
+
   // Wallet Management
   async createWallet(userId: string, role: 'investor' | 'issuer' | 'admin' = 'investor', blockchains: string = 'ARC-TESTNET'): Promise<WalletInfo> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}?role=${role}&blockchains=${blockchains}`, {
@@ -114,6 +133,32 @@ class HyperArcAPI {
   async getWalletBalance(userId: string, role: 'investor' | 'issuer' = 'investor'): Promise<BalanceInfo> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}/balance?role=${role}`));
     if (!response.ok) throw new Error('Failed to get balance');
+    return response.json();
+  }
+
+  async addBlockchainsToWallet(userId: string, role: 'investor' | 'issuer' | 'admin', blockchains: string): Promise<WalletInfo> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}/blockchains?role=${role}&blockchains=${blockchains}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    if (!response.ok) throw new Error('Failed to add blockchains to wallet');
+    return response.json();
+  }
+
+  // Gateway (Cross-chain Funding)
+  async fundArcAddress(userId: string, sourceChain: string, amount: string): Promise<any> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/gateway/fund-arc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, sourceChain, amount }),
+    }));
+    if (!response.ok) throw new Error('Failed to fund Arc address');
+    return response.json();
+  }
+
+  async getGatewayTransactionStatus(txId: string): Promise<any> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/gateway/transactions/${txId}`));
+    if (!response.ok) throw new Error('Failed to get gateway transaction status');
     return response.json();
   }
 
@@ -203,6 +248,18 @@ class HyperArcAPI {
     return response.json();
   }
 
+  async getProductTotalUnits(productId: number): Promise<{ totalUnits: number }> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}/total-units`));
+    if (!response.ok) throw new Error('Failed to get product total units');
+    return response.json();
+  }
+
+  async getTreasuryBalance(): Promise<{ balance: string; balanceUSD: number }> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/treasury/balance`));
+    if (!response.ok) throw new Error('Failed to get treasury balance');
+    return response.json();
+  }
+
   // Investment
   async subscribe(userId: string, productId: number, amountE6: string): Promise<any> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/invest/subscribe`, {
@@ -247,14 +304,20 @@ class HyperArcAPI {
   }
 
   async getProductHolding(userId: string, productId: number): Promise<PortfolioHolding> {
-    const response = await fetch(`${this.baseUrl}/portfolio/${userId}/product/${productId}`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/portfolio/${userId}/product/${productId}`));
     if (!response.ok) throw new Error('Failed to get product holding');
     return response.json();
   }
 
   async getUSDCBalance(userId: string, role: 'investor' | 'issuer' = 'investor'): Promise<{ balance: string }> {
-    const response = await fetch(`${this.baseUrl}/portfolio/${userId}/usdc-balance?role=${role}`);
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/portfolio/${userId}/usdc-balance?role=${role}`));
     if (!response.ok) throw new Error('Failed to get USDC balance');
+    return response.json();
+  }
+
+  async getUSDCAllowance(userId: string, role: 'investor' | 'issuer' = 'investor'): Promise<{ allowance: string }> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/portfolio/${userId}/usdc-allowance?role=${role}`));
+    if (!response.ok) throw new Error('Failed to get USDC allowance');
     return response.json();
   }
 }

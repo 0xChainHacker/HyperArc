@@ -31,6 +31,7 @@ export default function Home() {
   const [connectingWallet, setConnectingWallet] = useState(false);
   const [metamaskAddress, setMetamaskAddress] = useState<string | null>(null);
   const [circleWalletAddress, setCircleWalletAddress] = useState<string | null>(null);
+  const [circleWalletInfo, setCircleWalletInfo] = useState<any>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   
   // Create product form state
@@ -85,12 +86,23 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      // Load wallet balance only if user is authenticated
+      // Load wallet balance and Circle wallet info only if user is authenticated
       if (walletConnected && userId) {
         const balanceData = await api.getWalletBalance(userId, userRole);
         setWalletBalance(balanceData?.balanceUSD || 0);
+        
+        // Load Circle wallet info with all addresses
+        try {
+          const walletInfo = await api.getWallet(userId, userRole);
+          console.log('Raw wallet info from API:', walletInfo);
+          console.log('Balance USD:', balanceData?.balanceUSD, 'Balance:', balanceData?.balance);
+          setCircleWalletInfo(walletInfo);
+        } catch (err) {
+          console.error('Failed to load Circle wallet info:', err);
+        }
       } else {
         setWalletBalance(0);
+        setCircleWalletInfo(null);
       }
 
       if (userRole === 'investor') {
@@ -209,9 +221,9 @@ export default function Home() {
     try {
       const priceE6 = (parseFloat(newProduct.price) * 1_000_000).toString();
       
-      // Get issuer wallet address
+      // Get issuer wallet address from circleWallet
       const wallet = await api.getWallet(userId, 'issuer') as any;
-      const issuerAddress = wallet.addresses?.[0]?.address || '0x0000000000000000000000000000000000000000';
+      const issuerAddress = wallet.circleWallet ? Object.values(wallet.circleWallet)[0] as string : '0x0000000000000000000000000000000000000000';
       
       await api.createProduct({
         name: newProduct.name,
@@ -346,9 +358,9 @@ export default function Home() {
       
       console.log('Circle wallet data:', walletData);
       
-      // Addresses is an object like { 'ARC-TESTNET': '0x...' }
-      if (walletData?.addresses) {
-        const addressValues = Object.values(walletData.addresses);
+      // circleWallet is an object like { 'ARC-TESTNET': '0x...' }
+      if (walletData?.circleWallet) {
+        const addressValues = Object.values(walletData.circleWallet);
         if (addressValues.length > 0) {
           const address = addressValues[0] as string;
           setCircleWalletAddress(address);
@@ -611,6 +623,77 @@ export default function Home() {
                 </p>
               </div>
             </div>
+
+            {/* Circle Wallet Balance */}
+            {circleWalletInfo && (
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
+                <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                      <span className="text-white font-bold text-lg">💳</span>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Circle Wallet</h2>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Multi-chain USDC Balance</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="mb-6">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Total Balance</p>
+                    <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                      ${walletBalance.toFixed(2)} USDC
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Blockchain Addresses</p>
+                    {circleWalletInfo.circleWallet && typeof circleWalletInfo.circleWallet === 'object' && (
+                      <>
+                        {Object.entries(circleWalletInfo.circleWallet).map(([blockchain, address]: [string, any]) => {
+                          const actualAddress = typeof address === 'string' ? address : '';
+                          
+                          return (
+                            <div key={blockchain} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">
+                                    {blockchain.split('-')[0].substring(0, 2)}
+                                  </span>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{blockchain}</p>
+                                  <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                                    {actualAddress ? `${actualAddress.slice(0, 10)}...${actualAddress.slice(-8)}` : 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (actualAddress) {
+                                    navigator.clipboard.writeText(actualAddress);
+                                    alert('Address copied to clipboard!');
+                                  }
+                                }}
+                                disabled={!actualAddress}
+                                className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Copy
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                    {(!circleWalletInfo.circleWallet || Object.keys(circleWalletInfo.circleWallet).length === 0) && (
+                      <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
+                        No blockchain addresses found
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Holdings List */}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
