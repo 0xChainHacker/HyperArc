@@ -108,7 +108,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["auth", "verify"]
             },
-            "description": "Verify SIWE signature and obtain JWT token.\n\n**Note**: You need to:\n1. Call GET /auth/nonce to get a nonce\n2. Use frontend (siwe library) to create SIWE message\n3. Sign the message with MetaMask\n4. Submit the complete message and signature to this endpoint\n\n**Example message format**:\n```\nlocalhost:3001 wants you to sign in with your Ethereum account:\n0x1234567890123456789012345678901234567890\n\nSign in with Ethereum to HyperArc\n\nURI: http://localhost:3001\nVersion: 1\nChain ID: 5042002\nNonce: <nonce-from-step-1>\nIssued At: <current-ISO-timestamp>\n```"
+            "description": "Verify SIWE signature and obtain JWT token.\n\n**Auto-creates user account**: If this is the first time the wallet address signs in, the backend will automatically:\n1. Create a new user account with userId = `user-{first8chars}`\n2. Create Circle wallets on: ARC-TESTNET, ARB-SEPOLIA, MATIC-AMOY, ETH-SEPOLIA\n3. Link the MetaMask address as an external wallet\n4. Return JWT token for immediate use\n\n**For existing users**: Returns JWT token linked to existing account.\n\n**Steps to use**:\n1. Call GET /auth/nonce to get a nonce\n2. Use frontend (siwe library) to create SIWE message\n3. Sign the message with MetaMask\n4. Submit the complete message and signature to this endpoint\n\n**Example message format**:\n```\nlocalhost:3001 wants you to sign in with your Ethereum account:\n0x1234567890123456789012345678901234567890\n\nSign in with Ethereum to HyperArc\n\nURI: http://localhost:3001\nVersion: 1\nChain ID: 5042002\nNonce: <nonce-from-step-1>\nIssued At: <current-ISO-timestamp>\n```\n\n**Response**:\n```json\n{\n  \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"userId\": \"user-12345678\",\n  \"role\": \"investor\",\n  \"address\": \"0x1234567890123456789012345678901234567890\"\n}\n```"
           },
           "response": []
         },
@@ -170,13 +170,13 @@
           "response": []
         }
       ],
-      "description": "Ethereum wallet authentication based on EIP-4361 (SIWE)"
+      "description": "Ethereum wallet authentication based on EIP-4361 (SIWE). First-time login automatically creates user account and Circle wallets on 4 blockchains (ARC-TESTNET, ARB-SEPOLIA, MATIC-AMOY, ETH-SEPOLIA)."
     },
     {
       "name": "1. Wallet Management",
       "item": [
         {
-          "name": "Create Investor Wallet (Single Chain)",
+          "name": "Create Investor Wallet (Multi Chain)",
           "request": {
             "method": "POST",
             "header": [
@@ -186,7 +186,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&blockchains=ARC-TESTNET",
+              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&blockchains=ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY,ETH-SEPOLIA",
               "host": ["{{baseUrl}}"],
               "path": ["wallets", "{{userId}}"],
               "query": [
@@ -197,41 +197,12 @@
                 },
                 {
                   "key": "blockchains",
-                  "value": "ARC-TESTNET",
+                  "value": "ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY,ETH-SEPOLIA",
                   "description": "Comma-separated list of blockchains (default: ARC-TESTNET)"
                 }
               ]
             },
-            "description": "Creates or retrieves an investor wallet for a user on ARC-TESTNET"
-          }
-        },
-        {
-          "name": "Create Investor Wallet (Multi-Chain)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&blockchains=ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY",
-              "host": ["{{baseUrl}}"],
-              "path": ["wallets", "{{userId}}"],
-              "query": [
-                {
-                  "key": "role",
-                  "value": "investor"
-                },
-                {
-                  "key": "blockchains",
-                  "value": "ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY",
-                  "description": "Multiple blockchains separated by commas"
-                }
-              ]
-            },
-            "description": "Creates wallet with addresses on multiple blockchains"
+            "description": "Creates or retrieves wallet with addresses on multiple blockchains.\n\n**Note**: SIWE login automatically creates wallets on all 4 chains (ARC-TESTNET, ARB-SEPOLIA, MATIC-AMOY, ETH-SEPOLIA). Manual creation is only needed for:\n- Issuer wallets\n- Admin wallets\n- Adding additional blockchains to existing wallets\n\n**Response includes**:\n- walletId (Circle wallet ID)\n- addresses for each blockchain\n- wallet state (LIVE/FROZEN)"
           }
         },
         {
