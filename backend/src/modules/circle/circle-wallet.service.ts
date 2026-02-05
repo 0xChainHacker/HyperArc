@@ -187,13 +187,20 @@ export class CircleWalletService {
    * Derive wallet on a new blockchain
    * Adds a new blockchain to existing wallet without creating a new wallet ID
    */
-  async deriveWallet(walletId: string, blockchain: string): Promise<string> {
+  async deriveWallet(walletId: string, blockchain: string, name?: string): Promise<string> {
     this.logger.log(`Deriving wallet ${walletId} on blockchain: ${blockchain}`);
     try {
-      const response = await this.circleDeveloperSdk.deriveWallet({
+      const deriveParams: any = {
         id: walletId,
         blockchain: blockchain as EvmBlockchain,
-      });
+      };
+      
+      // Add metadata with name if provided
+      if (name) {
+        deriveParams.metadata = { name };
+      }
+      
+      const response = await this.circleDeveloperSdk.deriveWallet(deriveParams);
       
       const address = response.data?.wallet?.address;
       

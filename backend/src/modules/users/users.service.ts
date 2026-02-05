@@ -268,9 +268,11 @@ export class UsersService implements OnModuleInit {
     
     for (const blockchain of actuallyNewBlockchains) {
       try {
+        const walletName = `${userId}-${role}`;
         const address = await this.circleWalletService.deriveWallet(
           existingWallet.walletId,
-          blockchain
+          blockchain,
+          walletName
         );
         updatedCircleWallet[blockchain] = address;
         this.logger.log(`Derived ${blockchain}: ${address}`);
