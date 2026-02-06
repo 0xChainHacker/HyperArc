@@ -50,6 +50,7 @@ export default function Home() {
   const [circleWalletAddress, setCircleWalletAddress] = useState<string | null>(null);
   const [circleWalletInfo, setCircleWalletInfo] = useState<any>(null);
   const [chainUSDCBalances, setChainUSDCBalances] = useState<Record<string, any[]>>({});
+  const [unifiedUSDCBalance, setUnifiedUSDCBalance] = useState<number | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
 
   // Create product form state
@@ -171,38 +172,33 @@ export default function Home() {
     try {
       // Load wallet balance and Circle wallet info only if user is authenticated
       if (walletConnected && userId) {
-        // Use unified USDC balance endpoint
-        let balanceData: any = null;
+        let unifiedData: any = null;
         try {
-          balanceData = await api.getUnifiedUSDCBalance(userId, userRole);
-          console.log('Unified USDC balance data:', balanceData);
-          const totalUSDC = parseFloat(balanceData?.totalBalanceUSDC ?? '0');
-          setWalletBalance(Number.isFinite(totalUSDC) ? totalUSDC : 0);
-
-          if (balanceData?.balancesByChain && !circleWalletInfo) {
-            setCircleWalletInfo((prev: any) => ({ ...(prev || {}), balancesByChain: balanceData.balancesByChain }));
-          }
+          unifiedData = await api.getUnifiedUSDCBalance(userId, userRole);
+          console.log('Unified USDC balance data:', unifiedData);
+          const totalUnified = parseFloat(unifiedData?.totalBalanceUSDC ?? '0');
+          setUnifiedUSDCBalance(Number.isFinite(totalUnified) ? totalUnified : 0);
         } catch (err) {
-          console.error('Failed to fetch unified USDC balance, falling back to walletBalance endpoint', err);
-          balanceData = await api.getWalletBalance(userId, userRole);
-          setWalletBalance(balanceData?.balanceUSD || 0);
+          console.error('Failed to fetch unified USDC balance', err);
+          setUnifiedUSDCBalance(null);
         }
 
         // Load Circle wallet info with all addresses
         try {
           const walletInfo = await api.getWallet(userId, userRole);
           console.log('Raw wallet info from API:', walletInfo);
-          if (balanceData) {
-            console.log('Balance USD:', balanceData?.balanceUSD, 'Balance:', balanceData?.balance);
-          }
           setCircleWalletInfo(walletInfo);
-          // Also fetch detailed per-chain balances and extract USDC entries
           try {
             const detailed = await api.getDetailedWalletBalance(userId, userRole);
             console.log('Detailed wallet balances:', detailed);
+
             if (detailed?.summary?.totalUSDC !== undefined) {
               const parsed = Number(detailed.summary.totalUSDC);
               if (!Number.isNaN(parsed)) setWalletBalance(parsed);
+            } else {
+              
+              const fallback = await api.getWalletBalance(userId, userRole);
+              setWalletBalance(fallback?.balanceUSD || 0);
             }
 
             const usdcMap: Record<string, any[]> = {};
@@ -217,6 +213,12 @@ export default function Home() {
             setChainUSDCBalances(usdcMap);
           } catch (err) {
             console.error('Failed to fetch detailed wallet balances:', err);
+            try {
+              const fallback = await api.getWalletBalance(userId, userRole);
+              setWalletBalance(fallback?.balanceUSD || 0);
+            } catch (e) {
+              console.error('Fallback wallet balance failed', e);
+            }
           }
         } catch (err) {
           console.error('Failed to load Circle wallet info:', err);
@@ -768,8 +770,17 @@ export default function Home() {
                         </div>
                         <div className="p-6">
                           <div className="mb-6">
+                            <div className="mb-3">
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Unified USDC Balance</p>
+                              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                                {unifiedUSDCBalance === null ? '—' : `$${unifiedUSDCBalance.toFixed(2)} USDC`}
+                              </p>
+                            </div>
+
+                            <div className="mb-3">
                             <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Total Balance</p>
-                            <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">${walletBalance.toFixed(2)} USDC</p>
+                            <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">${walletBalance.toFixed(2)} USDC</p>
+                            </div>
                           </div>
 
                           <div className="space-y-3">
