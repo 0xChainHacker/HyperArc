@@ -436,7 +436,7 @@ export default function Home() {
         console.log('Existing Circle wallet:', wallet);
       } catch (err) {
         console.log('Creating new Circle wallet for user:', userId);
-        wallet = await api.createWallet(userId, userRole, 'ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY,ETH-SEPOLIA');
+        wallet = await api.createWallet(userId, userRole, 'ARC-TESTNET,ETH-SEPOLIA,AVAX-FUJI,BASE-TESTNET');
         console.log('Created Circle wallet:', wallet);
       }
 

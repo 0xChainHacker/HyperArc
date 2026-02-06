@@ -139,7 +139,7 @@ export class AuthService {
           await this.usersService.getOrCreateWallet(
             userId,
             WalletRole.INVESTOR,
-            ['ARC-TESTNET', 'ARB-SEPOLIA', 'MATIC-AMOY', 'ETH-SEPOLIA']
+            ['ARC-TESTNET', 'ETH-SEPOLIA', 'AVAX-FUJI', 'BASE-TESTNET']
           );
           console.log('Wallet created for user:', userId);
           
