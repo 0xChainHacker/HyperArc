@@ -43,6 +43,23 @@ export interface BalanceInfo {
   balanceUSD: number;
 }
 
+export interface ChainBalance {
+  chain: string;
+  domain: number;
+  balanceE6: string;
+  balanceUSDC: string;
+}
+
+export interface UnifiedUSDCBalance {
+  userId: string;
+  role: string;
+  walletId: string;
+  depositorAddress?: string;
+  totalBalanceE6: string;
+  totalBalanceUSDC: string;
+  balancesByChain: ChainBalance[];
+}
+
 class HyperArcAPI {
   private baseUrl: string;
   private onUnauthorized?: () => void;
@@ -133,6 +150,14 @@ class HyperArcAPI {
   async getWalletBalance(userId: string, role: 'investor' | 'issuer' = 'investor'): Promise<BalanceInfo> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}/balance?role=${role}`));
     if (!response.ok) throw new Error('Failed to get balance');
+    return response.json();
+  }
+
+  // Unified USDC balance across multiple chains (Circle unified endpoint)
+  async getUnifiedUSDCBalance(userId: string, role: 'investor' | 'issuer' = 'investor', chains?: string): Promise<UnifiedUSDCBalance> {
+    const url = `${this.baseUrl}/wallets/${userId}/balance/usdc?role=${role}` + (chains ? `&chains=${encodeURIComponent(chains)}` : '');
+    const response = await this.handleResponse(await fetch(url));
+    if (!response.ok) throw new Error('Failed to get unified USDC balance');
     return response.json();
   }
 

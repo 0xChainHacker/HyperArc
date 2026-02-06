@@ -170,14 +170,30 @@ export default function Home() {
     try {
       // Load wallet balance and Circle wallet info only if user is authenticated
       if (walletConnected && userId) {
-        const balanceData = await api.getWalletBalance(userId, userRole);
-        setWalletBalance(balanceData?.balanceUSD || 0);
+        // Use unified USDC balance endpoint
+        let balanceData: any = null;
+        try {
+          balanceData = await api.getUnifiedUSDCBalance(userId, userRole);
+          console.log('Unified USDC balance data:', balanceData);
+          const totalUSDC = parseFloat(balanceData?.totalBalanceUSDC ?? '0');
+          setWalletBalance(Number.isFinite(totalUSDC) ? totalUSDC : 0);
+
+          if (balanceData?.balancesByChain && !circleWalletInfo) {
+            setCircleWalletInfo((prev: any) => ({ ...(prev || {}), balancesByChain: balanceData.balancesByChain }));
+          }
+        } catch (err) {
+          console.error('Failed to fetch unified USDC balance, falling back to walletBalance endpoint', err);
+          balanceData = await api.getWalletBalance(userId, userRole);
+          setWalletBalance(balanceData?.balanceUSD || 0);
+        }
 
         // Load Circle wallet info with all addresses
         try {
           const walletInfo = await api.getWallet(userId, userRole);
           console.log('Raw wallet info from API:', walletInfo);
-          console.log('Balance USD:', balanceData?.balanceUSD, 'Balance:', balanceData?.balance);
+          if (balanceData) {
+            console.log('Balance USD:', balanceData?.balanceUSD, 'Balance:', balanceData?.balance);
+          }
           setCircleWalletInfo(walletInfo);
         } catch (err) {
           console.error('Failed to load Circle wallet info:', err);
