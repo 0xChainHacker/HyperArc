@@ -4,10 +4,10 @@ export class FundArcDto {
   amount: string; // USDC amount
 }
 
-export class AggregateToArcDto {
+export class DepositToGatewayDto {
   userId: string;
-  minAmountPerChain?: number; // Minimum USDC to transfer from each chain (default: 0.01)
-  maxFee?: string; // Maximum fee per transfer (default: "2010000")
+  sourceChain: 'ETH-SEPOLIA' | 'BASE-SEPOLIA' | 'AVAX-FUJI';
+  amount: number; // USDC amount (e.g., 10 for 10 USDC)
 }
 
 export class TransferToArcDto {

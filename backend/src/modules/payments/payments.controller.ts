@@ -1,8 +1,7 @@
 import { Controller, Get, Post, Body, Param, ParseIntPipe } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { 
-  FundArcDto, 
-  AggregateToArcDto, 
+  DepositToGatewayDto,
   TransferToArcDto, 
   SubscribeDto, 
   DeclareDividendDto, 
@@ -14,14 +13,9 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   // Gateway API
-  @Post('gateway/fund-arc')
-  async fundArc(@Body() dto: FundArcDto) {
-    return this.paymentsService.fundArc(dto);
-  }
-
-  @Post('gateway/aggregate-to-arc')
-  async aggregateToArc(@Body() dto: AggregateToArcDto) {
-    return this.paymentsService.aggregateToArc(dto);
+  @Post('gateway/deposit')
+  async depositToGateway(@Body() dto: DepositToGatewayDto) {
+    return this.paymentsService.depositToGateway(dto);
   }
 
   @Post('gateway/transfer-to-arc')

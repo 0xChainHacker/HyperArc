@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Param, Query } from '@nestjs/common';
 import { UsersService, WalletRole } from './users.service';
+import { WalletChain } from '../circle/circle-gateway.service';
 
 @Controller('wallets')
 export class UsersController {
@@ -65,7 +66,7 @@ export class UsersController {
     @Query('chains') chains?: string,
   ) {
     const walletRole = this.parseRole(role);
-    const chainList = chains ? chains.split(',').map(c => c.trim()) : undefined;
+    const chainList = chains ? chains.split(',').map(c => c.trim() as WalletChain) : undefined;
     return this.usersService.getUnifiedUSDCBalance(userId, walletRole, chainList);
   }
 

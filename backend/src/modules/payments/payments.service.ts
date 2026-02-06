@@ -1,9 +1,9 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { CircleWalletService } from '../circle/circle-wallet.service';
-import { CircleGatewayService } from '../circle/circle-gateway.service';
+import { CircleGatewayService, WalletChain } from '../circle/circle-gateway.service';
 import { ArcContractService } from '../chain/arc-contract.service';
 import { UsersService, WalletRole, ChainWallet } from '../users/users.service';
-import { FundArcDto, AggregateToArcDto, TransferToArcDto, SubscribeDto } from './dto/payment.dto';
+import { FundArcDto, DepositToGatewayDto, TransferToArcDto, SubscribeDto } from './dto/payment.dto';
 
 export interface GatewayTransaction {
   txId: string;
@@ -101,62 +101,56 @@ export class PaymentsService {
   }
 
   /**
-   * Aggregate USDC from all source chains to ARC-TESTNET
-   * Automatically queries balances and transfers available USDC from each supported chain
+   * Deposit USDC to Gateway Wallet (Step 1)
+   * Approve + Deposit USDC from source chain to Gateway unified balance
    */
-  async aggregateToArc(dto: AggregateToArcDto) {
-    this.logger.log(`Aggregating USDC to ARC for user ${dto.userId}`);
+  async depositToGateway(dto: DepositToGatewayDto) {
+    this.logger.log(
+      `Depositing ${dto.amount} USDC from ${dto.sourceChain} to Gateway for user ${dto.userId}`
+    );
 
-    // Get user wallet with all chains
+    // Get user wallet
     const userWallet = await this.usersService.getUserWallet(dto.userId, WalletRole.INVESTOR);
-    
-    // Get ARC address as recipient
-    const arcWallet = userWallet.circleWallet['ARC-TESTNET'];
-    if (!arcWallet) {
+
+    // Get source chain wallet
+    const sourceWallet = userWallet.circleWallet[dto.sourceChain];
+    if (!sourceWallet) {
       throw new BadRequestException(
-        'User does not have ARC-TESTNET wallet. Please add ARC-TESTNET blockchain first.'
+        `User does not have a wallet on ${dto.sourceChain}. Please add blockchain first.`
       );
     }
 
-    // Build sourceWalletIds map
-    const sourceWalletIds: { [key: string]: string } = {};
-    for (const [chain, chainWallet] of Object.entries(userWallet.circleWallet) as [string, ChainWallet][]) {
-      if (chain !== 'ARC-TESTNET') {
-        sourceWalletIds[chain] = chainWallet.walletId;
-      }
-    }
+    // Get USDC address for source chain
+    const usdcAddress = this.circleGatewayService.getUSDCAddress(dto.sourceChain as any);
+    
+    // Convert amount to base units (6 decimals)
+    const amountE6 = (dto.amount * 1_000_000).toString();
 
-    // Get first address (same across all chains for EOA)
-    const depositorAddress = (Object.values(userWallet.circleWallet)[0] as ChainWallet)?.address;
-    if (!depositorAddress) {
-      throw new BadRequestException('User wallet has no addresses');
-    }
+    this.logger.log(`Source: ${dto.sourceChain} (${sourceWallet.address})`);
+    this.logger.log(`USDC: ${usdcAddress}`);
+    this.logger.log(`Amount: ${amountE6} (${dto.amount} USDC)`);
 
-    this.logger.log(`Source chains: ${Object.keys(sourceWalletIds).join(', ')}`);
-    this.logger.log(`Depositor address: ${depositorAddress}`);
-    this.logger.log(`ARC recipient: ${arcWallet.address}`);
-
-    // Execute aggregation
-    const result = await this.circleGatewayService.aggregateUSDCToArc({
-      depositorAddress,
-      sourceWalletIds,
-      destinationWalletId: arcWallet.walletId,
-      recipientAddress: arcWallet.address,
-      minAmountPerChain: dto.minAmountPerChain,
-      maxFee: dto.maxFee,
-    });
+    // Execute deposit (approve + deposit)
+    const result = await this.circleGatewayService.completeGatewayDeposit(
+      sourceWallet.walletId,
+      usdcAddress,
+      amountE6,
+    );
 
     return {
       success: true,
-      message: `Aggregated ${result.totalTransferred} USDC to ARC-TESTNET`,
+      message: `Deposited ${dto.amount} USDC from ${dto.sourceChain} to Gateway Wallet`,
       userId: dto.userId,
-      arcAddress: arcWallet.address,
+      sourceChain: dto.sourceChain,
+      sourceAddress: sourceWallet.address,
+      amount: dto.amount,
+      amountE6,
       ...result,
     };
   }
 
   /**
-   * Transfer USDC from a specific source chain to ARC-TESTNET
+   * Transfer USDC from a specific source chain to ARC-TESTNET (Step 2)
    */
   async transferToArc(dto: TransferToArcDto) {
     this.logger.log(
@@ -188,7 +182,7 @@ export class PaymentsService {
 
     // Execute transfer
     const result = await this.circleGatewayService.transferToArc({
-      sourceChain: dto.sourceChain,
+      sourceChain: dto.sourceChain as Exclude<WalletChain, 'ARC-TESTNET'>,
       sourceWalletId: sourceWallet.walletId,
       destinationWalletId: arcWallet.walletId,
       recipientAddress: arcWallet.address,

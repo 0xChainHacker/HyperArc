@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, OnModuleInit, BadRequestException } from '@nestjs/common';
 import { CircleWalletService } from '../circle/circle-wallet.service';
-import { CircleGatewayService } from '../circle/circle-gateway.service';
+import { CircleGatewayService, WalletChain } from '../circle/circle-gateway.service';
 import { ArcContractService } from '../chain/arc-contract.service';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -348,16 +348,16 @@ export class UsersService implements OnModuleInit {
     for (const blockchain of actuallyNewBlockchains) {
       try {
         const walletName = `${userId}-${role}`;
-        const address = await this.circleWalletService.deriveWallet(
+        const { walletId: newWalletId, address } = await this.circleWalletService.deriveWallet(
           baseWalletId,
           blockchain,
           walletName
         );
         updatedCircleWallet[blockchain] = {
-          walletId: baseWalletId,
+          walletId: newWalletId,
           address,
         };
-        this.logger.log(`Derived ${blockchain}: ${address}`);
+        this.logger.log(`Derived ${blockchain}: walletId=${newWalletId}, address=${address}`);
       } catch (error) {
         this.logger.error(`Failed to derive wallet on ${blockchain}:`, error.message);
         throw new BadRequestException(
@@ -596,7 +596,7 @@ export class UsersService implements OnModuleInit {
   async getUnifiedUSDCBalance(
     userId: string,
     role: WalletRole = WalletRole.INVESTOR,
-    chains?: string[],
+    chains?: WalletChain[],
   ) {
     const userWallet = await this.getUserWallet(userId, role);
     

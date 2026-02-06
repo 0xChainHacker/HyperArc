@@ -285,132 +285,112 @@ GET /wallets/:userId/balance/arc?role=investor
 
 ### 2. Cross-chain Funding (Circle Gateway)
 
-#### Aggregate USDC to ARC (Multi-chain)
+Circle Gateway provides a two-step process for cross-chain USDC transfers:
+
+**Step 1: Deposit** - Move USDC from source chain to Gateway Wallet (unified balance)
+**Step 2: Transfer** - Move USDC from Gateway unified balance to destination chain (ARC-TESTNET)
+
+#### Step 1: Deposit USDC to Gateway
 ```http
-POST /gateway/aggregate-to-arc
+POST /gateway/deposit
 ```
 
-**Description**: Automatically aggregate USDC from multiple source chains (ETH-SEPOLIA, BASE-SEPOLIA, AVAX-FUJI) to ARC-TESTNET. This endpoint will query balances on all supported source chains and transfer amounts that meet the minimum threshold.
+**Description**: Deposit USDC from source chain to Circle Gateway Wallet. This is Step 1 of the cross-chain transfer process.
 
 **Request Body:**
 ```json
 {
   "userId": "user123",
-  "minAmountPerChain": "0.01",  // Optional, default: 0.01 USDC
-  "maxFee": "0.5"               // Optional, max fee per transfer in USDC
+  "sourceChain": "ETH-SEPOLIA",
+  "amount": "10"
 }
 ```
+
+**What this endpoint does:**
+1. Approves USDC for Gateway Wallet contract
+2. Deposits USDC to Gateway Wallet
+3. USDC becomes part of Gateway's unified balance
+4. After finality, can be transferred to any destination chain
 
 **Response:**
 ```json
 {
   "success": true,
-  "arcWalletId": "wallet-arc-123",
-  "arcAddress": "0xABC...",
-  "results": [
-    {
-      "sourceChain": "ETH-SEPOLIA",
-      "status": "success",
-      "txId": "tx-eth-123",
-      "amount": "10.50",
-      "balanceBefore": "10.50",
-      "balanceAfter": "0.00"
-    },
-    {
-      "sourceChain": "BASE-SEPOLIA",
-      "status": "skipped",
-      "reason": "Balance 0.005 below minimum threshold 0.01"
-    },
-    {
-      "sourceChain": "AVAX-FUJI",
-      "status": "failed",
-      "error": "Insufficient balance for fees",
-      "amount": "5.00"
-    }
-  ],
-  "totalAggregated": "10.50"
+  "message": "Deposited 10 USDC to Gateway Wallet",
+  "userId": "user123",
+  "sourceChain": "ETH-SEPOLIA",
+  "amount": "10",
+  "approveTxId": "circle-tx-abc123",
+  "depositTxId": "circle-tx-def456"
 }
 ```
 
 **Supported Source Chains:**
-- ETH-SEPOLIA (Ethereum Sepolia Testnet, Domain: 0)
-- BASE-SEPOLIA (Base Sepolia Testnet, Domain: 6)
-- AVAX-FUJI (Avalanche Fuji Testnet, Domain: 1)
+- ETH-SEPOLIA (Ethereum Sepolia)
+- BASE-SEPOLIA (Base Sepolia)
+- AVAX-FUJI (Avalanche Fuji)
 
-**Important Notes:**
-- This endpoint uses Circle's Cross-Chain Transfer Protocol (CCTP) which only supports specific chains
-- Other chains in your wallet (e.g., ARB-SEPOLIA, MATIC-AMOY) will be automatically skipped
-- CCTP requires standard USDC (6 decimals). Testnet native tokens like USDC-TESTNET (18 decimals) are not supported
-- Destination is always ARC-TESTNET (Domain: 26)
+---
 
-#### Transfer to ARC (Single-chain)
+#### Step 2: Transfer USDC to ARC
 ```http
 POST /gateway/transfer-to-arc
 ```
 
-**Description**: Transfer USDC from a specific source chain to ARC-TESTNET.
+**Description**: Transfer USDC from Gateway unified balance (specific source chain and amount) to ARC-TESTNET.
+
+**Prerequisites**: Must have deposited USDC to Gateway Wallet first using `/gateway/deposit` endpoint.
 
 **Request Body:**
 ```json
 {
   "userId": "user123",
   "sourceChain": "ETH-SEPOLIA",
-  "amount": "100.00",
-  "maxFee": "0.5"  // Optional, max fee in USDC
+  "amount": 10,
+  "maxFee": "2010000"
 }
 ```
+
+**What this endpoint does:**
+1. Builds burn intent for specified amount
+2. Signs burn intent (EIP-712)
+3. Submits to Gateway API for attestation
+4. Mints USDC on ARC-TESTNET via GatewayMinter
 
 **Response:**
 ```json
 {
   "success": true,
-  "txId": "tx-eth-456",
+  "message": "Transferred 10 USDC from ETH-SEPOLIA to ARC-TESTNET",
+  "userId": "user123",
   "sourceChain": "ETH-SEPOLIA",
   "destinationChain": "ARC-TESTNET",
-  "amount": "100.00",
+  "amount": 10,
   "sourceAddress": "0x123...",
   "destinationAddress": "0xABC...",
-  "estimatedArrival": "2024-01-15T10:30:00Z"
+  "attestation": "0x...",
+  "mintTxId": "circle-tx-xyz789"
 }
 ```
 
-#### Fund Arc Address (On-ramp)
-```http
-POST /gateway/fund-arc
-```
-
-**Request Body:**
-```json
+**Complete Two-Step Example:**
+```bash
+# Step 1: Deposit USDC from ETH-SEPOLIA to Gateway
+POST /gateway/deposit
 {
   "userId": "user123",
-  "sourceChain": "ETH",
-  "amount": "100.00"
+  "sourceChain": "ETH-SEPOLIA",
+  "amount": 10
 }
-```
+# Wait for finality (~15 minutes)
 
-**Response:**
-```json
+# Step 2: Transfer from Gateway to ARC-TESTNET
+POST /gateway/transfer-to-arc
 {
-  "txId": "gateway-1234",
   "userId": "user123",
-  "status": "PENDING",
-  "depositTxId": "payment-intent-id",
-  "amount": "100.00"
-}
-```
-
-#### Get Gateway Transaction Status
-```http
-GET /gateway/transactions/:txId
-```
-
-**Response:**
-```json
-{
-  "txId": "gateway-1234",
-  "status": "CONFIRMED",
-  "depositTxId": "...",
-  "withdrawalTxId": "0x..."
+  "sourceChain": "ETH-SEPOLIA",
+  "amount": 10,
+  "maxFee": "2010000"
 }
 ```
 
