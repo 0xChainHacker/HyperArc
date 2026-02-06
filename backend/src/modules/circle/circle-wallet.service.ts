@@ -187,7 +187,7 @@ export class CircleWalletService {
    * Derive wallet on a new blockchain
    * Adds a new blockchain to existing wallet without creating a new wallet ID
    */
-  async deriveWallet(walletId: string, blockchain: string, name?: string): Promise<string> {
+  async deriveWallet(walletId: string, blockchain: string, name?: string): Promise<{ walletId: string; address: string }> {
     this.logger.log(`Deriving wallet ${walletId} on blockchain: ${blockchain}`);
     try {
       const deriveParams: any = {
@@ -202,14 +202,15 @@ export class CircleWalletService {
       
       const response = await this.circleDeveloperSdk.deriveWallet(deriveParams);
       
+      const newWalletId = response.data?.wallet?.id;
       const address = response.data?.wallet?.address;
       
-      if (!address) {
-        throw new Error('Failed to derive wallet: No address returned');
+      if (!address || !newWalletId) {
+        throw new Error('Failed to derive wallet: No address or walletId returned');
       }
       
-      this.logger.log(`Wallet ${walletId} derived on ${blockchain}: ${address}`);
-      return address;
+      this.logger.log(`Wallet derived on ${blockchain}: walletId=${newWalletId}, address=${address}`);
+      return { walletId: newWalletId, address };
     } catch (error) {
       this.logger.error(
         `Failed to derive wallet ${walletId} on ${blockchain}`,
