@@ -122,8 +122,9 @@ export class PaymentsService {
 
     // Get USDC address for source chain
     const usdcAddress = this.circleGatewayService.getUSDCAddress(dto.sourceChain as any);
-    
-    // Convert amount to base units (6 decimals)
+
+    // Keep decimal string for Circle SDK (expects decimal like "10") and also compute base units for reporting
+    const amountStr = String(dto.amount);
     const amountE6 = (dto.amount * 1_000_000).toString();
 
     this.logger.log(`Source: ${dto.sourceChain} (${sourceWallet.address})`);
@@ -134,7 +135,7 @@ export class PaymentsService {
     const result = await this.circleGatewayService.completeGatewayDeposit(
       sourceWallet.walletId,
       usdcAddress,
-      amountE6,
+      amountStr,
     );
 
     return {
