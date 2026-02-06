@@ -49,6 +49,7 @@ export default function Home() {
 
   const [circleWalletAddress, setCircleWalletAddress] = useState<string | null>(null);
   const [circleWalletInfo, setCircleWalletInfo] = useState<any>(null);
+  const [chainUSDCBalances, setChainUSDCBalances] = useState<Record<string, any[]>>({});
   const [authToken, setAuthToken] = useState<string | null>(null);
 
   // Create product form state
@@ -195,6 +196,28 @@ export default function Home() {
             console.log('Balance USD:', balanceData?.balanceUSD, 'Balance:', balanceData?.balance);
           }
           setCircleWalletInfo(walletInfo);
+          // Also fetch detailed per-chain balances and extract USDC entries
+          try {
+            const detailed = await api.getDetailedWalletBalance(userId, userRole);
+            console.log('Detailed wallet balances:', detailed);
+            if (detailed?.summary?.totalUSDC !== undefined) {
+              const parsed = Number(detailed.summary.totalUSDC);
+              if (!Number.isNaN(parsed)) setWalletBalance(parsed);
+            }
+
+            const usdcMap: Record<string, any[]> = {};
+            if (detailed?.balancesByChain) {
+              for (const [chain, entries] of Object.entries(detailed.balancesByChain)) {
+                const usdcEntries = (entries || []).filter((e: any) =>
+                  (e?.token?.symbol || '').toLowerCase() === 'usdc'
+                );
+                if (usdcEntries.length > 0) usdcMap[chain] = usdcEntries;
+              }
+            }
+            setChainUSDCBalances(usdcMap);
+          } catch (err) {
+            console.error('Failed to fetch detailed wallet balances:', err);
+          }
         } catch (err) {
           console.error('Failed to load Circle wallet info:', err);
         }
@@ -463,10 +486,17 @@ export default function Home() {
       if (walletData?.circleWallet) {
         const addressValues = Object.values(walletData.circleWallet);
         if (addressValues.length > 0) {
-          const address = addressValues[0] as string;
-          setCircleWalletAddress(address);
-          await loadData();
-          console.log('Circle wallet address:', address);
+          const raw = addressValues[0];
+          const address = typeof raw === 'string'
+            ? raw
+            : (raw && typeof raw === 'object' && 'address' in raw && typeof (raw as any).address === 'string'
+                ? (raw as any).address
+                : Object.values(raw || {}).find((v: any) => typeof v === 'string') ?? '');
+          if (address) {
+            setCircleWalletAddress(address);
+            await loadData();
+            console.log('Circle wallet address:', address);
+          }
         }
       }
     } catch (err) {
@@ -747,7 +777,13 @@ export default function Home() {
                             {circleWalletInfo.circleWallet && typeof circleWalletInfo.circleWallet === 'object' && (
                               <>
                                 {Object.entries(circleWalletInfo.circleWallet).map(([blockchain, address]: [string, any]) => {
-                                  const actualAddress = typeof address === 'string' ? address : '';
+                                  const actualAddress = typeof address === 'string'
+                                    ? address
+                                    : (address && typeof address === 'object'
+                                        ? (address.address ?? Object.values(address).find((v: any) => typeof v === 'string') ?? '')
+                                        : '');
+                                  const usdcEntries = chainUSDCBalances[blockchain] || [];
+                                  const usdcDisplay = usdcEntries.length > 0 ? usdcEntries.map((u:any) => u.amountFormatted).join(', ') : '0.00';
                                   return (
                                     <div
                                       key={blockchain}
@@ -762,6 +798,7 @@ export default function Home() {
                                           <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
                                             {actualAddress ? `${actualAddress.slice(0, 10)}...${actualAddress.slice(-8)}` : 'N/A'}
                                           </p>
+                                          <p className="text-xs text-slate-500 dark:text-slate-400">USDC: <span className="font-semibold">{usdcDisplay}</span></p>
                                         </div>
                                       </div>
                                       <button

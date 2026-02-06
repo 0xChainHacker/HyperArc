@@ -43,6 +43,33 @@ export interface BalanceInfo {
   balanceUSD: number;
 }
 
+export interface DetailedToken {
+  token: {
+    name: string;
+    symbol: string;
+    decimals: number;
+    isNative: boolean;
+    tokenAddress?: string;
+  };
+  amount: string;
+  amountFormatted: string;
+  updateDate: string;
+}
+
+export interface DetailedWalletBalance {
+  userId: string;
+  role: string;
+  walletIds: string[];
+  summary?: {
+    totalUSDC?: number;
+    totalUSDCE6?: string;
+    chainsCount?: number;
+    assetsCount?: number;
+  };
+  balancesByChain: Record<string, DetailedToken[]>;
+  rawTokenBalances?: Array<{ token: any; amount: string; updateDate: string }>;
+}
+
 export interface ChainBalance {
   chain: string;
   domain: number;
@@ -150,6 +177,13 @@ class HyperArcAPI {
   async getWalletBalance(userId: string, role: 'investor' | 'issuer' = 'investor'): Promise<BalanceInfo> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}/balance?role=${role}`));
     if (!response.ok) throw new Error('Failed to get balance');
+    return response.json();
+  }
+
+  // Detailed wallet balance (per-chain token lists) - returns USDC + other tokens
+  async getDetailedWalletBalance(userId: string, role: 'investor' | 'issuer' = 'investor'): Promise<DetailedWalletBalance> {
+    const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}/balance?role=${role}`));
+    if (!response.ok) throw new Error('Failed to get detailed wallet balance');
     return response.json();
   }
 
