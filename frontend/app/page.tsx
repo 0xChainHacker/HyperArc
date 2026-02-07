@@ -57,6 +57,7 @@ export default function Home() {
   const [chainUSDCBalances, setChainUSDCBalances] = useState<Record<string, any[]>>({});
   const [unifiedUSDCBalance, setUnifiedUSDCBalance] = useState<number | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authRole, setAuthRole] = useState<UserRole | null>(null);
 
   // Create product form state
   const [newProduct, setNewProduct] = useState({
@@ -82,6 +83,7 @@ export default function Home() {
   useEffect(() => {
     const storedToken = localStorage.getItem('authToken');
     const storedUserId = localStorage.getItem('userId');
+    const storedRole = localStorage.getItem('userRole');
     const cachedEns = localStorage.getItem(ENS_CACHE_KEY);
 
     if (storedToken && storedUserId) {
@@ -89,6 +91,10 @@ export default function Home() {
       setAuthToken(storedToken);
       setUserId(storedUserId);
       setWalletConnected(true);
+      if (storedRole === 'investor' || storedRole === 'issuer') {
+        setAuthRole(storedRole as UserRole);
+        setUserRole(storedRole as UserRole);
+      }
 
       if (typeof window.ethereum !== 'undefined') {
         window.ethereum
@@ -480,7 +486,6 @@ export default function Home() {
       await handleGetCircleWallet();
     } catch (err) {
       console.error('MetaMask connection error:', err);
-      alert(err instanceof Error ? err.message : 'Failed to connect MetaMask');
     } finally {
       setConnectingWallet(false);
     }
@@ -519,11 +524,11 @@ export default function Home() {
       });
 
       setAuthToken(authResult.accessToken);
+      setAuthRole(authResult.role as UserRole);
       setUserId(authResult.userId);
       localStorage.setItem('authToken', authResult.accessToken);
       localStorage.setItem('userId', authResult.userId);
-
-      alert(`Successfully logged in!\nUser ID: ${authResult.userId}\nRole: ${authResult.role}`);
+      localStorage.setItem('userRole', authResult.role);
 
       await loadData();
     } catch (err) {
@@ -581,8 +586,10 @@ export default function Home() {
     setCircleWalletAddress(null);
     setUserId(null);
     setAuthToken(null);
+    setAuthRole(null);
     localStorage.removeItem('authToken');
     localStorage.removeItem('userId');
+    localStorage.removeItem('userRole');
     localStorage.removeItem(ENS_CACHE_KEY);
     loadData();
   };
@@ -634,9 +641,9 @@ export default function Home() {
                     userRole === 'issuer'
                       ? 'bg-white dark:bg-slate-700 text-purple-600 shadow-sm'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
+                  } ${!authRole || authRole !== 'issuer' ? 'opacity-90' : ''}`}
                 >
-                  SPV/Issuer
+                  SPV/Issuer {!authRole || authRole !== 'issuer' ? '🔒' : ''}
                 </button>
               </div>
 
@@ -792,13 +799,17 @@ export default function Home() {
 
                           <button
                             onClick={() => {
+                              if (!walletConnected) {
+                                alert('Please connect your wallet to invest.');
+                                return;
+                              }
                               const amount = prompt('Enter amount in USDC to invest:');
                               if (amount) handleSubscribe(product.id, parseFloat(amount));
                             }}
-                            disabled={subscribingStatus[product.id] === 'loading'}
+                            disabled={!walletConnected || subscribingStatus[product.id] === 'loading'}
                             className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
                           >
-                            {subscribingStatus[product.id] === 'loading' ? 'Purchasing...' : 'Subscribe Now'}
+                            {!walletConnected ? 'Connect Wallet to Invest 🔒' : (subscribingStatus[product.id] === 'loading' ? 'Purchasing...' : 'Subscribe Now')}
                           </button>
                           {subscribingStatus[product.id] === 'success' && (
                             <p className="text-sm text-green-700 dark:text-green-300 mt-2">{subscribeMessages[product.id] || 'Purchase complete'}</p>
@@ -818,199 +829,205 @@ export default function Home() {
 
                 {/* Investor Portfolio Tab */}
                 {investorTab === 'portfolio' && (
-                  <div className="space-y-6">
-                    {/* Portfolio Summary */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Total Invested</p>
-                        <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                          ${Number(
-                            portfolio.reduce((sum, item) => {
-                              const prod = products.find((p) => p.id === item.productId);
-                              const unitPrice = prod ? Number(prod.price || 0) : 0;
-                              return sum + Number(item.units || 0) * unitPrice;
-                            }, 0),
-                          ).toFixed(2)}
-                        </p>
+                  walletConnected ? (
+                    <div className="space-y-6">
+                      {/* Portfolio Summary */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
+                          <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Total Invested</p>
+                          <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+                            ${Number(
+                              portfolio.reduce((sum, item) => {
+                                const prod = products.find((p) => p.id === item.productId);
+                                const unitPrice = prod ? Number(prod.price || 0) : 0;
+                                return sum + Number(item.units || 0) * unitPrice;
+                              }, 0),
+                            ).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
+                          <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Pending Dividends</p>
+                          <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                            ${Number(portfolio.reduce((sum, item) => sum + Number(item.pendingDividend || 0), 0)).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
+                          <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Holdings</p>
+                          <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+                            {portfolio.reduce((sum, item) => sum + Number(item.units || 0), 0)} units
+                          </p>
+                        </div>
                       </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Pending Dividends</p>
-                        <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                          ${Number(portfolio.reduce((sum, item) => sum + Number(item.pendingDividend || 0), 0)).toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Holdings</p>
-                        <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                          {portfolio.reduce((sum, item) => sum + Number(item.units || 0), 0)} units
-                        </p>
-                      </div>
-                    </div>
 
-                    {/* Circle Wallet Balance */}
-                    {circleWalletInfo && (
+                      {/* Circle Wallet Balance */}
+                      {circleWalletInfo && (
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
+                          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                                <span className="text-white font-bold text-lg">💳</span>
+                              </div>
+                              <div>
+                                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Circle Wallet</h2>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">Multi-chain USDC Balance</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-6">
+                            <div className="mb-6">
+                              <div className="mb-3">
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Unified USDC Balance</p>
+                                <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                                  {unifiedUSDCBalance === null ? '—' : `$${unifiedUSDCBalance.toFixed(2)} USDC`}
+                                </p>
+                              </div>
+
+                              <div className="mb-3">
+                              <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Total Balance</p>
+                              <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">${walletBalance.toFixed(2)} USDC</p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-3">
+                              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Blockchain Addresses</p>
+                              {circleWalletInfo.circleWallet && typeof circleWalletInfo.circleWallet === 'object' && (
+                                <>
+                                  {Object.entries(circleWalletInfo.circleWallet).map(([blockchain, address]: [string, any]) => {
+                                    const actualAddress = typeof address === 'string'
+                                      ? address
+                                      : (address && typeof address === 'object'
+                                          ? (address.address ?? Object.values(address).find((v: any) => typeof v === 'string') ?? '')
+                                          : '');
+                                    const usdcEntries = chainUSDCBalances[blockchain] || [];
+                                    const usdcDisplay = usdcEntries.length > 0 ? usdcEntries.map((u:any) => u.amountFormatted).join(', ') : '0.00';
+                                    return (
+                                      <div
+                                        key={blockchain}
+                                        className="flex flex-col p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg"
+                                      >
+                                        <div className="flex items-center w-full">
+                                        <div className="flex items-center gap-3 flex-1">
+                                          <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
+                                            <span className="text-white text-xs font-bold">{blockchain.split('-')[0].substring(0, 2)}</span>
+                                          </div>
+                                          <div>
+                                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{blockchain}</p>
+                                            <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                                              {actualAddress ? `${actualAddress.slice(0, 10)}...${actualAddress.slice(-8)}` : 'N/A'}
+                                            </p>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">USDC: <span className="font-semibold">{usdcDisplay}</span></p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 justify-end">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={depositAmounts[blockchain] ?? ''}
+                                            onChange={(e) => setDepositAmounts((s) => ({ ...s, [blockchain]: e.target.value }))}
+                                            placeholder="Amount"
+                                            className="w-28 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100"
+                                          />
+                                          <button
+                                            onClick={() => handleGatewayDeposit(blockchain)}
+                                            disabled={depositStatus[blockchain] === 'loading'}
+                                            className="px-3 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                          >
+                                            {depositStatus[blockchain] === 'loading' ? (
+                                              <span className="flex items-center gap-2"><span className="animate-spin inline-block w-3 h-3 rounded-full border-b-2 border-current"/>Processing</span>
+                                            ) : (
+                                              'Deposit'
+                                            )}
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              if (actualAddress) {
+                                                navigator.clipboard.writeText(actualAddress);
+                                                alert('Address copied to clipboard!');
+                                              }
+                                            }}
+                                            disabled={!actualAddress}
+                                            className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                          >
+                                            Copy
+                                          </button>
+                                        </div>
+                                        </div>
+                                        <div className="w-full mt-2 text-right">
+                                          {depositStatus[blockchain] === 'success' && (
+                                            <p className="text-xs text-green-700 dark:text-green-300 inline">Completed: {depositMessages[blockchain]}</p>
+                                          )}
+                                          {depositStatus[blockchain] === 'error' && (
+                                            <p className="text-xs text-red-700 dark:text-red-300 inline">Error: {depositMessages[blockchain]}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </>
+                              )}
+                              {(!circleWalletInfo.circleWallet || Object.keys(circleWalletInfo.circleWallet).length === 0) && (
+                                <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">No blockchain addresses found</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Holdings List */}
                       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
                         <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                              <span className="text-white font-bold text-lg">💳</span>
-                            </div>
-                            <div>
-                              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Circle Wallet</h2>
-                              <p className="text-sm text-slate-500 dark:text-slate-400">Multi-chain USDC Balance</p>
-                            </div>
-                          </div>
+                          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">My Holdings</h2>
                         </div>
-                        <div className="p-6">
-                          <div className="mb-6">
-                            <div className="mb-3">
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Unified USDC Balance</p>
-                              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-                                {unifiedUSDCBalance === null ? '—' : `$${unifiedUSDCBalance.toFixed(2)} USDC`}
-                              </p>
+                        <div className="divide-y divide-slate-200 dark:divide-slate-700">
+                          {portfolio.map((holding) => (
+                            <div key={holding.productId} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                              <div className="flex justify-between items-start mb-4">
+                                <div>
+                                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">{holding.productName}</h3>
+                                  <p className="text-sm text-slate-500 dark:text-slate-400">Product ID: #{holding.productId}</p>
+                                </div>
+                                <button
+                                  onClick={() => handleClaimDividend(holding.productId)}
+                                  disabled={holding.pendingDividend === 0}
+                                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+                                >
+                                  Claim Dividend
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">Invested</p>
+                                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                                    ${Number(holding.invested || 0).toFixed(2)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">Units Owned</p>
+                                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{holding.units || 0}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">Pending Dividend</p>
+                                  <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                                    ${Number(holding.pendingDividend || 0).toFixed(2)}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
-
-                            <div className="mb-3">
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Total Balance</p>
-                            <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">${walletBalance.toFixed(2)} USDC</p>
+                          ))}
+                          {portfolio.length === 0 && (
+                            <div className="p-12 text-center text-slate-500 dark:text-slate-400">
+                              No holdings yet. Start investing in products!
                             </div>
-                          </div>
-
-                          <div className="space-y-3">
-                            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Blockchain Addresses</p>
-                            {circleWalletInfo.circleWallet && typeof circleWalletInfo.circleWallet === 'object' && (
-                              <>
-                                {Object.entries(circleWalletInfo.circleWallet).map(([blockchain, address]: [string, any]) => {
-                                  const actualAddress = typeof address === 'string'
-                                    ? address
-                                    : (address && typeof address === 'object'
-                                        ? (address.address ?? Object.values(address).find((v: any) => typeof v === 'string') ?? '')
-                                        : '');
-                                  const usdcEntries = chainUSDCBalances[blockchain] || [];
-                                  const usdcDisplay = usdcEntries.length > 0 ? usdcEntries.map((u:any) => u.amountFormatted).join(', ') : '0.00';
-                                  return (
-                                    <div
-                                      key={blockchain}
-                                      className="flex flex-col p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg"
-                                    >
-                                      <div className="flex items-center w-full">
-                                      <div className="flex items-center gap-3 flex-1">
-                                        <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                                          <span className="text-white text-xs font-bold">{blockchain.split('-')[0].substring(0, 2)}</span>
-                                        </div>
-                                        <div>
-                                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{blockchain}</p>
-                                          <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                                            {actualAddress ? `${actualAddress.slice(0, 10)}...${actualAddress.slice(-8)}` : 'N/A'}
-                                          </p>
-                                          <p className="text-xs text-slate-500 dark:text-slate-400">USDC: <span className="font-semibold">{usdcDisplay}</span></p>
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-2 justify-end">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          step="0.01"
-                                          value={depositAmounts[blockchain] ?? ''}
-                                          onChange={(e) => setDepositAmounts((s) => ({ ...s, [blockchain]: e.target.value }))}
-                                          placeholder="Amount"
-                                          className="w-28 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100"
-                                        />
-                                        <button
-                                          onClick={() => handleGatewayDeposit(blockchain)}
-                                          disabled={depositStatus[blockchain] === 'loading'}
-                                          className="px-3 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                          {depositStatus[blockchain] === 'loading' ? (
-                                            <span className="flex items-center gap-2"><span className="animate-spin inline-block w-3 h-3 rounded-full border-b-2 border-current"/>Processing</span>
-                                          ) : (
-                                            'Deposit'
-                                          )}
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            if (actualAddress) {
-                                              navigator.clipboard.writeText(actualAddress);
-                                              alert('Address copied to clipboard!');
-                                            }
-                                          }}
-                                          disabled={!actualAddress}
-                                          className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                          Copy
-                                        </button>
-                                      </div>
-                                      </div>
-                                      <div className="w-full mt-2 text-right">
-                                        {depositStatus[blockchain] === 'success' && (
-                                          <p className="text-xs text-green-700 dark:text-green-300 inline">Completed: {depositMessages[blockchain]}</p>
-                                        )}
-                                        {depositStatus[blockchain] === 'error' && (
-                                          <p className="text-xs text-red-700 dark:text-red-300 inline">Error: {depositMessages[blockchain]}</p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </>
-                            )}
-                            {(!circleWalletInfo.circleWallet || Object.keys(circleWalletInfo.circleWallet).length === 0) && (
-                              <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">No blockchain addresses found</p>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      </div>
-                    )}
-
-                    {/* Holdings List */}
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
-                      <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-                        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">My Holdings</h2>
-                      </div>
-                      <div className="divide-y divide-slate-200 dark:divide-slate-700">
-                        {portfolio.map((holding) => (
-                          <div key={holding.productId} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                            <div className="flex justify-between items-start mb-4">
-                              <div>
-                                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">{holding.productName}</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">Product ID: #{holding.productId}</p>
-                              </div>
-                              <button
-                                onClick={() => handleClaimDividend(holding.productId)}
-                                disabled={holding.pendingDividend === 0}
-                                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
-                              >
-                                Claim Dividend
-                              </button>
-                            </div>
-                            <div className="grid grid-cols-3 gap-4">
-                              <div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">Invested</p>
-                                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                                  ${Number(holding.invested || 0).toFixed(2)}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">Units Owned</p>
-                                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{holding.units || 0}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">Pending Dividend</p>
-                                <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                                  ${Number(holding.pendingDividend || 0).toFixed(2)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        {portfolio.length === 0 && (
-                          <div className="p-12 text-center text-slate-500 dark:text-slate-400">
-                            No holdings yet. Start investing in products!
-                          </div>
-                        )}
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                      Please connect your wallet to view your portfolio.
+                    </div>
+                  )
                 )}
               </>
             )}
@@ -1031,26 +1048,26 @@ export default function Home() {
                     My Products
                   </button>
                   <button
-                    onClick={() => walletConnected && setIssuerTab('create')}
-                    disabled={!walletConnected}
+                    onClick={() => setIssuerTab('create')}
+                    disabled={!walletConnected || authRole !== 'issuer'}
                     className={`px-6 py-3 rounded-lg font-medium transition-all ${
                       issuerTab === 'create'
                         ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-md'
                         : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50'
-                    } ${!walletConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    } ${(!walletConnected || authRole !== 'issuer') ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    Create Product {!walletConnected && '🔒'}
+                    Create Product {(!walletConnected || authRole !== 'issuer') && '🔒'}
                   </button>
                   <button
-                    onClick={() => walletConnected && setIssuerTab('pending')}
-                    disabled={!walletConnected}
+                    onClick={() => setIssuerTab('pending')}
+                    disabled={!walletConnected || authRole !== 'issuer'}
                     className={`px-6 py-3 rounded-lg font-medium transition-all ${
                       issuerTab === 'pending'
                         ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-md'
                         : 'text-slate-600 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-800/50'
-                    } ${!walletConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    } ${(!walletConnected || authRole !== 'issuer') ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    Pending Approval {!walletConnected && '🔒'}
+                    Pending Approval {(!walletConnected || authRole !== 'issuer') && '🔒'}
                   </button>
                 </div>
 
@@ -1163,139 +1180,119 @@ export default function Home() {
 
                 {/* Create Product Tab */}
                 {issuerTab === 'create' && (
-                  <div className="max-w-2xl mx-auto">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-8 border border-slate-200 dark:border-slate-700">
-                      <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6">Create New Product</h2>
+                  authRole !== 'issuer' ? (
+                    <div className="text-center py-12 text-slate-500 dark:text-slate-400">You are not authorized to create products.</div>
+                  ) : !walletConnected ? (
+                    <div className="text-center py-12 text-slate-500 dark:text-slate-400">Please connect your wallet to create a product.</div>
+                  ) : (
+                    <div className="max-w-2xl mx-auto">
+                      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-8 border border-slate-200 dark:border-slate-700">
+                        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-6">Create New Product</h2>
 
-                      <form onSubmit={handleCreateProduct} className="space-y-6">
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                            Product Name
-                          </label>
-                          <input
-                            type="text"
-                            value={newProduct.name}
-                            onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                            className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            placeholder="e.g., Real Estate Fund A"
-                            required
-                          />
-                        </div>
+                        <form onSubmit={handleCreateProduct} className="space-y-6">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Product Name</label>
+                            <input
+                              type="text"
+                              value={newProduct.name}
+                              onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                              className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              placeholder="e.g., Real Estate Fund A"
+                              required
+                            />
+                          </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Description</label>
-                          <textarea
-                            value={newProduct.description}
-                            onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                            rows={4}
-                            className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            placeholder="Describe your investment product..."
-                            required
-                          />
-                        </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Description</label>
+                            <textarea
+                              value={newProduct.description}
+                              onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                              rows={4}
+                              className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              placeholder="Describe your investment product..."
+                              required
+                            />
+                          </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Category</label>
-                          <select
-                            value={newProduct.category}
-                            onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
-                            className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                          >
-                            <option>Real Estate</option>
-                            <option>Venture Capital</option>
-                            <option>Energy</option>
-                            <option>Infrastructure</option>
-                          </select>
-                        </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Category</label>
+                            <select
+                              value={newProduct.category}
+                              onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                              className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                              <option>Real Estate</option>
+                              <option>Venture Capital</option>
+                              <option>Energy</option>
+                              <option>Infrastructure</option>
+                            </select>
+                          </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                            Price per Unit (USDC)
-                          </label>
-                          <input
-                            type="number"
-                            value={newProduct.price}
-                            onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                            className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            placeholder="10.00"
-                            step="0.01"
-                            required
-                          />
-                        </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Price per Unit (USDC)</label>
+                            <input
+                              type="number"
+                              value={newProduct.price}
+                              onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
+                              className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              placeholder="10.00"
+                              step="0.01"
+                              required
+                            />
+                          </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                            Metadata URI (optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={newProduct.metadataURI}
-                            onChange={(e) => setNewProduct({ ...newProduct, metadataURI: e.target.value })}
-                            className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            placeholder="ipfs://..."
-                          />
-                        </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Metadata URI (optional)</label>
+                            <input
+                              type="text"
+                              value={newProduct.metadataURI}
+                              onChange={(e) => setNewProduct({ ...newProduct, metadataURI: e.target.value })}
+                              className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              placeholder="ipfs://..."
+                            />
+                          </div>
 
-                        <button
-                          type="submit"
-                          className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium transition-all text-lg"
-                        >
-                          Submit for Approval
-                        </button>
+                          <button type="submit" className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium transition-all text-lg">Submit for Approval</button>
 
-                        <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
-                          Your product will be reviewed by the admin before being listed
-                        </p>
-                      </form>
+                          <p className="text-sm text-slate-500 dark:text-slate-400 text-center">Your product will be reviewed by the admin before being listed</p>
+                        </form>
+                      </div>
                     </div>
-                  </div>
+                  )
                 )}
 
                 {/* Pending Products Tab */}
                 {issuerTab === 'pending' && (
-                  <div className="space-y-4">
-                    {pendingProducts.map((product) => (
-                      <div
-                        key={product.id}
-                        className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">{product.name}</h3>
-                              <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 text-xs font-medium rounded-full">
-                                Pending Review
-                              </span>
+                  authRole !== 'issuer' ? (
+                    <div className="text-center py-12 text-slate-500 dark:text-slate-400">You are not authorized to view pending products.</div>
+                  ) : !walletConnected ? (
+                    <div className="text-center py-12 text-slate-500 dark:text-slate-400">Please connect your wallet to view pending products.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      {pendingProducts.map((product) => (
+                        <div key={product.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">{product.name}</h3>
+                                <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 text-xs font-medium rounded-full">Pending Review</span>
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{product.description}</p>
+                              {product.metadataURI && (
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Metadata: <a href={toMetadataUrl(product.metadataURI)} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-600 dark:text-blue-400 underline break-all">{product.metadataURI}</a></p>
+                              )}
                             </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{product.description}</p>
-                            {product.metadataURI && (
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Metadata: <a href={toMetadataUrl(product.metadataURI)} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-600 dark:text-blue-400 underline break-all">{product.metadataURI}</a></p>
-                            )}
-                            <div className="flex gap-6 text-sm">
-                              <div>
-                                <span className="text-slate-500 dark:text-slate-400">Price: </span>
-                                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                                  ${(product.price || 0).toFixed(2)} USDC
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-slate-500 dark:text-slate-400">Category: </span>
-                                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                                  {product.category || 'General'}
-                                </span>
-                              </div>
+                            <div>
+                              <span className="text-slate-500 dark:text-slate-400">Category: </span>
+                              <span className="font-semibold text-slate-900 dark:text-slate-100">{product.category || 'General'}</span>
                             </div>
                           </div>
-                          <button className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors">
-                            Cancel
-                          </button>
+                          <button className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors">Cancel</button>
                         </div>
-                      </div>
-                    ))}
-                    {pendingProducts.length === 0 && (
-                      <div className="text-center py-12 text-slate-500 dark:text-slate-400">No pending products</div>
-                    )}
-                  </div>
+                      ))}
+                      {pendingProducts.length === 0 && (<div className="text-center py-12 text-slate-500 dark:text-slate-400">No pending products</div>)}
+                    </div>
+                  )
                 )}
               </>
             )}
