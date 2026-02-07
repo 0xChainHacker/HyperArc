@@ -1,12 +1,90 @@
 [
   {
     "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "uint256", "name": "amountE6", "type": "uint256" }
+      { "internalType": "address", "name": "usdc_", "type": "address" },
+      { "internalType": "address", "name": "ledger_", "type": "address" }
     ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": true, "internalType": "address", "name": "issuer", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "amountE6", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "accDividendPerShareNew", "type": "uint256" }
+    ],
+    "name": "DividendDeclared",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": true, "internalType": "address", "name": "investor", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "amountE6", "type": "uint256" }
+    ],
+    "name": "Claimed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": true, "internalType": "address", "name": "issuer", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "amountE6", "type": "uint256" }
+    ],
+    "name": "UnclaimedDividendWithdrawn",
+    "type": "event"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "accDividendPerShare",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "dividendPoolE6",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }, { "internalType": "address", "name": "", "type": "address" }],
+    "name": "rewardDebt",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "usdc",
+    "outputs": [{ "internalType": "contract IERC20", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "ledger",
+    "outputs": [{ "internalType": "contract IEconomicInterestLedger", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "uint256", "name": "amountE6", "type": "uint256" }],
     "name": "declareDividend",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "address", "name": "investor", "type": "address" }],
+    "name": "pending",
+    "outputs": [{ "internalType": "uint256", "name": "pendingE6", "type": "uint256" }],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -17,30 +95,14 @@
     "type": "function"
   },
   {
-    "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "address", "name": "investor", "type": "address" }
-    ],
-    "name": "pending",
-    "outputs": [{ "internalType": "uint256", "name": "pendingE6", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "address", "name": "investor", "type": "address" }
-    ],
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "address", "name": "investor", "type": "address" }],
     "name": "syncRewardDebt",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
-    "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "uint256", "name": "amountE6", "type": "uint256" }
-    ],
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "uint256", "name": "amountE6", "type": "uint256" }],
     "name": "withdrawUnclaimedDividend",
     "outputs": [],
     "stateMutability": "nonpayable",

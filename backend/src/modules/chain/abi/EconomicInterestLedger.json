@@ -1,86 +1,83 @@
 [
   {
     "inputs": [
-      { "internalType": "address", "name": "issuer", "type": "address" },
-      { "internalType": "uint256", "name": "priceE6", "type": "uint256" },
-      { "internalType": "string", "name": "metadataURI", "type": "string" }
+      { "internalType": "address", "name": "usdc_", "type": "address" },
+      { "internalType": "address", "name": "owner_", "type": "address" }
     ],
-    "name": "createProduct",
-    "outputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
     "stateMutability": "nonpayable",
-    "type": "function"
+    "type": "constructor"
   },
   {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "bool", "name": "active", "type": "bool" },
-      { "internalType": "uint256", "name": "priceE6", "type": "uint256" }
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": true, "internalType": "address", "name": "issuer", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "priceE6", "type": "uint256" },
+      { "indexed": false, "internalType": "string", "name": "metadataURI", "type": "string" }
     ],
-    "name": "setProduct",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "name": "ProductCreated",
+    "type": "event"
   },
   {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "bool", "name": "frozen", "type": "bool" }
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": false, "internalType": "bool", "name": "active", "type": "bool" },
+      { "indexed": false, "internalType": "uint256", "name": "priceE6", "type": "uint256" }
     ],
-    "name": "freezeProduct",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "name": "ProductStatusUpdated",
+    "type": "event"
   },
   {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "uint256", "name": "usdcAmountE6", "type": "uint256" }
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": false, "internalType": "bool", "name": "frozen", "type": "bool" }
     ],
-    "name": "subscribe",
-    "outputs": [{ "internalType": "uint256", "name": "units", "type": "uint256" }],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "name": "ProductFrozen",
+    "type": "event"
   },
   {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "uint256", "name": "amountE6", "type": "uint256" }
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": true, "internalType": "address", "name": "investor", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "usdcPaidE6", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "unitsMinted", "type": "uint256" }
     ],
-    "name": "withdrawSubscriptionFunds",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "name": "Subscribed",
+    "type": "event"
   },
   {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "address", "name": "investor", "type": "address" },
-      { "internalType": "uint256", "name": "units", "type": "uint256" }
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": true, "internalType": "address", "name": "issuer", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "amountE6", "type": "uint256" }
     ],
-    "name": "refund",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "name": "SubscriptionFundsWithdrawn",
+    "type": "event"
   },
   {
+    "anonymous": false,
     "inputs": [
-      { "internalType": "uint256", "name": "productId", "type": "uint256" },
-      { "internalType": "address", "name": "investor", "type": "address" }
+      { "indexed": true, "internalType": "uint256", "name": "productId", "type": "uint256" },
+      { "indexed": true, "internalType": "address", "name": "investor", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "unitsBurned", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "usdcRefundedE6", "type": "uint256" }
     ],
-    "name": "holdingOf",
+    "name": "Refunded",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "productCount",
     "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
     "stateMutability": "view",
     "type": "function"
   },
   {
-    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
-    "name": "totalUnits",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
+    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
     "name": "products",
     "outputs": [
       { "internalType": "address", "name": "issuer", "type": "address" },
@@ -94,8 +91,78 @@
   },
   {
     "inputs": [],
+    "name": "usdc",
+    "outputs": [{ "internalType": "contract IERC20", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
+    "name": "holdingOf",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
+    "name": "totalUnits",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "issuer", "type": "address" }, { "internalType": "uint256", "name": "priceE6", "type": "uint256" }, { "internalType": "string", "name": "metadataURI", "type": "string" }],
+    "name": "createProduct",
+    "outputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "bool", "name": "active", "type": "bool" }, { "internalType": "uint256", "name": "priceE6", "type": "uint256" }],
+    "name": "setProduct",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "bool", "name": "frozen", "type": "bool" }],
+    "name": "freezeProduct",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "uint256", "name": "usdcAmountE6", "type": "uint256" }],
+    "name": "subscribe",
+    "outputs": [{ "internalType": "uint256", "name": "units", "type": "uint256" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "uint256", "name": "amountE6", "type": "uint256" }],
+    "name": "withdrawSubscriptionFunds",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "uint256", "name": "productId", "type": "uint256" }, { "internalType": "address", "name": "investor", "type": "address" }, { "internalType": "uint256", "name": "units", "type": "uint256" }],
+    "name": "refund",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "treasuryBalanceE6",
     "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
     "stateMutability": "view",
     "type": "function"
   }

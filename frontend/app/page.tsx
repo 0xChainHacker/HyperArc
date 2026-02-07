@@ -64,6 +64,7 @@ export default function Home() {
     description: '',
     price: '',
     category: 'Real Estate',
+    metadataURI: '',
   });
 
   // Setup automatic logout on JWT expiry
@@ -400,23 +401,33 @@ export default function Home() {
     try {
       const priceE6 = (parseFloat(newProduct.price) * 1_000_000).toString();
 
-      // Get issuer wallet address from circleWallet
+      // Get issuer wallet address from circleWallet and normalize to a string address
       const wallet = (await api.getWallet(userId, 'issuer')) as any;
-      const issuerAddress = wallet.circleWallet
-        ? (Object.values(wallet.circleWallet)[0] as string)
-        : '0x0000000000000000000000000000000000000000';
+      let issuerAddress = '0x0000000000000000000000000000000000000000';
+      try {
+        const walletData = Array.isArray(wallet) ? wallet.find((w: any) => w.role === 'issuer') : wallet;
+        if (walletData?.circleWallet) {
+          const raw = Object.values(walletData.circleWallet)[0];
+          if (typeof raw === 'string') issuerAddress = raw;
+          else if (raw && typeof raw === 'object') issuerAddress = (raw as { address?: string }).address ?? Object.values(raw).find((v: any) => typeof v === 'string') ?? issuerAddress;
+        } else if (wallet?.addresses && wallet.addresses[0]?.address) {
+          issuerAddress = wallet.addresses[0].address;
+        }
+      } catch (e) {
+        console.warn('Failed to parse issuer wallet address, using zero address', e);
+      }
 
       await api.createProduct({
         name: newProduct.name,
         description: newProduct.description,
         issuerAddress,
         priceE6,
-        metadataURI: `ipfs://metadata-${Date.now()}`, // Placeholder
+        metadataURI: newProduct.metadataURI?.trim() || `ipfs://metadata-${Date.now()}`,
         issuerUserId: userId,
       });
 
       alert('Product created and submitted for approval!');
-      setNewProduct({ name: '', description: '', price: '', category: 'Real Estate' });
+      setNewProduct({ name: '', description: '', price: '', category: 'Real Estate', metadataURI: '' });
       loadData();
       setIssuerTab('pending');
     } catch (err) {
@@ -1209,6 +1220,19 @@ export default function Home() {
                             placeholder="10.00"
                             step="0.01"
                             required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                            Metadata URI (optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={newProduct.metadataURI}
+                            onChange={(e) => setNewProduct({ ...newProduct, metadataURI: e.target.value })}
+                            className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            placeholder="ipfs://..."
                           />
                         </div>
 
