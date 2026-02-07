@@ -561,6 +561,14 @@ export default function Home() {
     return ensName ?? `${metamaskAddress.slice(0, 6)}...${metamaskAddress.slice(-4)}`;
   };
 
+  const toMetadataUrl = (uri?: string) => {
+    if (!uri) return undefined;
+    try {
+      if (uri.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${uri.slice(7)}`;
+    } catch {}
+    return uri;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       {/* Header */}
@@ -712,7 +720,12 @@ export default function Home() {
                           </div>
 
                           <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">{product.name}</h3>
-                          <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 line-clamp-2">{product.description}</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-400 mb-2 line-clamp-2">{product.description}</p>
+                          {product.metadataURI && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                              Metadata: <a href={toMetadataUrl(product.metadataURI)} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-600 dark:text-blue-400 underline break-all">{product.metadataURI}</a>
+                            </p>
+                          )}
 
                           <div className="space-y-2 mb-4">
                             <div className="flex justify-between text-sm">
@@ -731,9 +744,9 @@ export default function Home() {
                             )}
                             <div className="flex justify-between text-sm">
                               <span className="text-slate-500 dark:text-slate-400">Issuer</span>
-                              <span className="font-mono text-xs text-slate-900 dark:text-slate-100">
-                                {product.issuerAddress?.slice(0, 6)}...{product.issuerAddress?.slice(-4)}
-                              </span>
+                                <span className="font-mono text-xs text-slate-900 dark:text-slate-100">
+                                  {product.issuerAddress?.slice(0, 6)}...{product.issuerAddress?.slice(-4)}
+                                </span>
                             </div>
                           </div>
 
@@ -1011,6 +1024,11 @@ export default function Home() {
                             <div className="flex justify-between items-start mb-4">
                               <div>
                                 <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">{product.name}</h3>
+                                {product.metadataURI && (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                                    Metadata: <a href={toMetadataUrl(product.metadataURI)} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-600 dark:text-blue-400 underline break-all">{product.metadataURI}</a>
+                                  </p>
+                                )}
                                 <span
                                   className={`px-3 py-1 text-xs font-medium rounded-full ${
                                     product.active
@@ -1193,6 +1211,9 @@ export default function Home() {
                               </span>
                             </div>
                             <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{product.description}</p>
+                            {product.metadataURI && (
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Metadata: <a href={toMetadataUrl(product.metadataURI)} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-600 dark:text-blue-400 underline break-all">{product.metadataURI}</a></p>
+                            )}
                             <div className="flex gap-6 text-sm">
                               <div>
                                 <span className="text-slate-500 dark:text-slate-400">Price: </span>

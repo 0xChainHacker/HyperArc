@@ -253,19 +253,22 @@ class HyperArcAPI {
   async listProducts(): Promise<Product[]> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/products`));
     if (!response.ok) throw new Error('Failed to list products');
-    return response.json();
+    const raws = await response.json();
+    return (raws || []).map((r: any) => normalizeProduct(r));
   }
 
   async getPendingProducts(): Promise<Product[]> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/pending`));
     if (!response.ok) throw new Error('Failed to get pending products');
-    return response.json();
+    const raws = await response.json();
+    return (raws || []).map((r: any) => normalizeProduct(r));
   }
 
   async getProductDetails(productId: number): Promise<Product> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/products/${productId}`));
     if (!response.ok) throw new Error('Failed to get product details');
-    return response.json();
+    const raw = await response.json();
+    return normalizeProduct(raw);
   }
 
   async createProduct(productData: {
@@ -410,3 +413,32 @@ class HyperArcAPI {
 }
 
 export const api = new HyperArcAPI();
+
+function normalizeProduct(raw: any): Product {
+  const id = raw.productId ?? raw.id ?? 0;
+  const priceE6 = String(raw.priceE6 ?? raw.priceE6 ?? raw.price_e6 ?? '0');
+  const price = (() => {
+    const n = Number(priceE6);
+    if (!Number.isFinite(n)) return raw.price ?? 0;
+    return n / 1_000_000;
+  })();
+  const issuerAddress = raw.issuer ?? raw.issuerAddress ?? raw.issuer_address ?? '';
+
+  return {
+    id,
+    name: raw.name ?? raw.title ?? '',
+    description: raw.description ?? '',
+    issuerAddress,
+    priceE6,
+    price,
+    metadataURI: raw.metadataURI ?? raw.metadataUri ?? raw.metadata_uri ?? '',
+    contractAddress: raw.contractAddress ?? raw.contract_address,
+    active: raw.active ?? false,
+    status: raw.status ?? 'approved',
+    createdAt: raw.createdAt ?? raw.created_at,
+    totalUnits: raw.totalUnits ?? raw.total_units,
+    soldUnits: raw.soldUnits ?? raw.sold_units,
+    category: raw.category,
+    apy: raw.apy,
+  } as Product;
+}
