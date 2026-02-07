@@ -59,6 +59,11 @@ export default function Home() {
   const [unifiedUSDCBalance, setUnifiedUSDCBalance] = useState<number | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authRole, setAuthRole] = useState<UserRole | null>(null);
+  // Role-selection modal state for users without an existing account
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const [modalSelectedRole, setModalSelectedRole] = useState<UserRole>('investor');
+  const [modalUserIdInput, setModalUserIdInput] = useState<string>('');
 
   // Create product form state
   const [newProduct, setNewProduct] = useState({
@@ -552,6 +557,17 @@ export default function Home() {
       await loadData();
     } catch (err) {
       console.error('SIWE login error:', err);
+      // On any SIWE verification failure, prompt the user to choose role and create a wallet
+      try {
+        const suggested = `user-${address.slice(2, 10)}`;
+        setPendingUserId(suggested);
+        setModalUserIdInput(suggested);
+        setModalSelectedRole('investor');
+        setShowRoleModal(true);
+        return; // swallow error to allow user to choose role
+      } catch (e) {
+        // If something goes wrong creating suggestion, rethrow original error
+      }
       throw err;
     }
   };
@@ -567,9 +583,9 @@ export default function Home() {
         wallet = await api.getWallet(userId, userRole);
         console.log('Existing Circle wallet:', wallet);
       } catch (err) {
-        console.log('Creating new Circle wallet for user:', userId);
-        wallet = await api.createWallet(userId, userRole, 'ARC-TESTNET,ETH-SEPOLIA,AVAX-FUJI,BASE-TESTNET');
-        console.log('Created Circle wallet:', wallet);
+        console.log('No existing Circle wallet found for user, prompting role selection:', userId, err);
+        setShowRoleModal(true);
+        return;
       }
 
       const walletData = Array.isArray(wallet) ? wallet.find((w: any) => w.role === userRole) : wallet;
@@ -594,6 +610,64 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Circle wallet error:', err);
+    }
+  };
+
+  // Create a Circle wallet for the user using the selected role (from modal)
+  const createWalletForRole = async (role: UserRole, explicitUserId?: string) => {
+    const targetUserId = explicitUserId || userId || pendingUserId || modalUserIdInput;
+    if (!targetUserId) {
+      alert('No userId available');
+      return;
+    }
+    try {
+      setShowRoleModal(false);
+
+      // Choose blockchains based on role per request
+      const chainParam = role === 'investor'
+        ? 'ARC-TESTNET,ETH-SEPOLIA,BASE-SEPOLIA,AVAX-FUJI'
+        : 'ARC-TESTNET';
+
+      const external = metamaskAddress || undefined;
+      const wallet = await api.createWallet(targetUserId, role, chainParam, external);
+      setAuthRole(role);
+      setUserRole(role);
+      localStorage.setItem('userRole', role);
+      // persist userId
+      setUserId(targetUserId);
+      localStorage.setItem('userId', targetUserId);
+
+      const walletData = Array.isArray(wallet) ? wallet.find((w: any) => w.role === role) : wallet;
+      if (walletData?.circleWallet) {
+        const addressValues = Object.values(walletData.circleWallet);
+        if (addressValues.length > 0) {
+          const raw = addressValues[0];
+          const address = typeof raw === 'string'
+            ? raw
+            : (raw && typeof raw === 'object' && 'address' in raw && typeof (raw as any).address === 'string'
+                ? (raw as any).address
+                : Object.values(raw || {}).find((v: any) => typeof v === 'string') ?? '');
+          if (address) {
+            setCircleWalletAddress(address);
+            // After creation, reload data
+            await loadData();
+            console.log('Created and set Circle wallet address:', address);
+            // If investor, require the user to reconnect their wallet to complete SIWE login
+            if (role === 'investor' && metamaskAddress) {
+              alert('Wallet created. Please reconnect your wallet to complete sign-in.');
+              // Clear local connection state so user must reconnect and perform SIWE again
+              handleDisconnectWallet();
+              return;
+            }
+            return;
+          }
+        }
+      }
+      // If no circle wallet address found, still reload data
+      await loadData();
+    } catch (err) {
+      console.error('Failed to create Circle wallet for role', role, err);
+      alert(err instanceof Error ? err.message : 'Failed to create wallet');
     }
   };
 
@@ -707,6 +781,53 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* Role selection modal shown when user has no existing account */}
+      {showRoleModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-lg p-6 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Choose your role</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">We couldn't find an existing HyperArc account tied to this wallet. Please choose whether you'd like to register as an Investor or an Issuer (SPV).</p>
+            <div className="space-y-4 mb-4">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setModalSelectedRole('investor')}
+                  className={`flex-1 py-3 rounded-md font-medium ${modalSelectedRole === 'investor' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}`}
+                >
+                  Investor
+                </button>
+                <button
+                  onClick={() => setModalSelectedRole('issuer')}
+                  className={`flex-1 py-3 rounded-md font-medium ${modalSelectedRole === 'issuer' ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}`}
+                >
+                  Issuer (SPV)
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">User ID</label>
+                <input
+                  value={modalUserIdInput}
+                  onChange={(e) => setModalUserIdInput(e.target.value)}
+                  placeholder={pendingUserId ?? 'user-xxxxxx'}
+                  className="w-full rounded-md border border-slate-200 dark:border-slate-700 p-2 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">You can edit the generated userId before creating the wallet.</p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setShowRoleModal(false)} className="text-sm text-slate-600 dark:text-slate-400 hover:underline">Cancel</button>
+                <button
+                  onClick={() => createWalletForRole(modalSelectedRole, modalUserIdInput || pendingUserId || undefined)}
+                  className="py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium"
+                >
+                  Create Wallet
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

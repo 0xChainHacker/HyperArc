@@ -38,12 +38,15 @@ export class PaymentsService {
   async fundArc(dto: FundArcDto): Promise<GatewayTransaction> {
     this.logger.log(`Funding Arc for user ${dto.userId} from ${dto.sourceChain}`);
 
-    // Get or create investor wallet (investors receive funds)
-    const userWallet = await this.usersService.getOrCreateWallet(
-      dto.userId,
-      WalletRole.INVESTOR,
-      ['ARC-TESTNET']
-    );
+    // Require existing investor wallet (do not auto-create here)
+    let userWallet;
+    try {
+      userWallet = await this.usersService.getUserWallet(dto.userId, WalletRole.INVESTOR);
+    } catch (err) {
+      throw new BadRequestException(
+        `Investor wallet not found for user ${dto.userId}. Create one by POST /wallets/:userId?role=investor&externalWallets=<address>`
+      );
+    }
     const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
 
     if (!arcAddress) {
@@ -369,12 +372,13 @@ export class PaymentsService {
   async subscribe(dto: SubscribeDto) {
     this.logger.log(`User ${dto.userId} subscribing to product ${dto.productId}`);
 
-    // 0) Ensure wallet exists & get Arc address
-    const userWallet = await this.usersService.getOrCreateWallet(
-      dto.userId,
-      WalletRole.INVESTOR,
-      ['ARC-TESTNET'],
-    );
+    // 0) Ensure wallet exists & get Arc address (do not auto-create)
+    let userWallet;
+    try {
+      userWallet = await this.usersService.getUserWallet(dto.userId, WalletRole.INVESTOR);
+    } catch (err) {
+      throw new BadRequestException('Investor wallet not found. Please create a wallet first.');
+    }
     const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
     if (!arcAddress) {
       throw new BadRequestException(
@@ -568,12 +572,13 @@ export class PaymentsService {
   async claimDividend(userId: string, productId: number) {
     this.logger.log(`User ${userId} claiming dividend from product ${productId}`);
 
-    // Get investor wallet (investors claim dividends)
-    const userWallet = await this.usersService.getOrCreateWallet(
-      userId,
-      WalletRole.INVESTOR,
-      ['ARC-TESTNET']
-    );
+    // Get investor wallet (investors claim dividends) - require existing wallet
+    let userWallet;
+    try {
+      userWallet = await this.usersService.getUserWallet(userId, WalletRole.INVESTOR);
+    } catch (err) {
+      throw new BadRequestException('Investor wallet not found. Please create a wallet first.');
+    }
     
     // Get ARC-TESTNET wallet info
     const arcWallet = userWallet.circleWallet['ARC-TESTNET'];

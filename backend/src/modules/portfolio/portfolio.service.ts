@@ -37,11 +37,19 @@ export class PortfolioService {
     this.logger.log(`Fetching portfolio for user ${userId}`);
 
     // Get investor wallet (portfolio is for investors)
-    const userWallet = await this.usersService.getOrCreateWallet(
-      userId,
-      WalletRole.INVESTOR,
-      ['ARC-TESTNET']
-    );
+    let userWallet;
+    try {
+      userWallet = await this.usersService.getUserWallet(userId, WalletRole.INVESTOR);
+    } catch (err) {
+      this.logger.log(`No investor wallet for ${userId}, returning empty portfolio`);
+      return {
+        userId,
+        arcAddress: '',
+        usdcBalance: '0',
+        holdings: [],
+        totalPendingDividends: '0',
+      };
+    }
     const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
 
     if (!arcAddress) {
@@ -114,11 +122,14 @@ export class PortfolioService {
    * Get user holdings for a specific product
    */
   async getProductHolding(userId: string, productId: number) {
-    const userWallet = await this.usersService.getOrCreateWallet(
-      userId,
-      WalletRole.INVESTOR,
-      ['ARC-TESTNET']
-    );
+    let userWallet;
+    try {
+      userWallet = await this.usersService.getUserWallet(userId, WalletRole.INVESTOR);
+    } catch (err) {
+      throw new BadRequestException(
+        'User does not have an Arc address. Please create wallet with ARC-TESTNET blockchain.'
+      );
+    }
     const arcAddress = this.usersService.getAddressForBlockchain(userWallet, 'ARC-TESTNET');
 
     if (!arcAddress) {

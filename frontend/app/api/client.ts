@@ -157,8 +157,9 @@ class HyperArcAPI {
   }
 
   // Wallet Management
-  async createWallet(userId: string, role: 'investor' | 'issuer' | 'admin' = 'investor', blockchains: string = 'ARC-TESTNET'): Promise<WalletInfo> {
-    const response = await this.handleResponse(await fetch(`${this.baseUrl}/wallets/${userId}?role=${role}&blockchains=${blockchains}`, {
+  async createWallet(userId: string, role: 'investor' | 'issuer' | 'admin' = 'investor', blockchains: string = 'ARC-TESTNET', externalWallets?: string): Promise<WalletInfo> {
+    const url = `${this.baseUrl}/wallets/${userId}?role=${role}&blockchains=${encodeURIComponent(blockchains)}` + (externalWallets ? `&externalWallets=${encodeURIComponent(externalWallets)}` : '');
+    const response = await this.handleResponse(await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     }));

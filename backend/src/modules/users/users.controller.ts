@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Logger } from '@nestjs/common';
 import { UsersService, WalletRole } from './users.service';
 import { WalletChain } from '../circle/circle-gateway.service';
 
 @Controller('wallets')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+  private readonly logger = new Logger(UsersController.name);
 
   /**
    * Create or get wallet for user with specific role
@@ -16,10 +17,29 @@ export class UsersController {
     @Param('userId') userId: string,
     @Query('role') role: string = 'investor',
     @Query('blockchains') blockchains?: string,
+    @Query('externalWallets') externalWallets?: string,
   ) {
+    this.logger.log(`createWallet called for userId=${userId} role=${role} blockchains=${blockchains} externalWallets=${externalWallets}`);
     const walletRole = this.parseRole(role);
     const blockchainList = blockchains ? blockchains.split(',').map(b => b.trim()) : ['ARC-TESTNET'];
-    return this.usersService.getOrCreateWallet(userId, walletRole, blockchainList);
+    const wallet = await this.usersService.getOrCreateWallet(userId, walletRole, blockchainList);
+
+    // If externalWallets provided (comma-separated addresses), link them to the created wallet
+    if (externalWallets) {
+      const addresses = externalWallets.split(',').map(a => a.trim()).filter(Boolean);
+      for (const addr of addresses) {
+        try {
+          await this.usersService.linkExternalWallet(userId, walletRole, addr);
+        } catch (err) {
+          // Log and continue linking remaining addresses
+          // Note: linkExternalWallet returns false if wallet not found; it won't throw for duplicates
+          // If it throws, swallow to avoid failing the whole request
+          // (service already logs errors)
+        }
+      }
+    }
+
+    return wallet;
   }
 
   /**

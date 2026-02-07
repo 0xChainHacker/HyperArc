@@ -77,6 +77,18 @@ export class AuthService {
         issuedAt: siweMessage.issuedAt,
       });
       
+      // Early existence check: normalize address and ensure user exists.
+      const earlyAddress = siweMessage.address.toLowerCase();
+      console.log('Early existence check for address:', earlyAddress);
+      const earlyUser = this.usersService.findUserByAddress(earlyAddress);
+      if (!earlyUser) {
+        console.log('User not found (early check) for address:', earlyAddress);
+        // Do NOT auto-create here; return NotFound so frontend can create explicitly.
+        throw new NotFoundException(
+          `User wallet not found for address ${earlyAddress}. Create one by POST /wallets/:userId?role=investor|issuer&externalWallets=${earlyAddress}`
+        );
+      }
+
       // Verify the nonce exists and is not expired
       const storedNonce = this.nonces.get(siweMessage.nonce);
       console.log('Nonce validation:', {
@@ -129,39 +141,11 @@ export class AuthService {
       
       if (!userWallet) {
         console.log('User not found for address:', address);
-        console.log('Auto-creating new user wallet...');
-        
-        try {
-          // Generate userId based on address
-          const userId = `user-${address.slice(2, 10)}`;
-          
-          // Use UsersService to create wallet (handles Circle wallet and JSON updates)
-          await this.usersService.getOrCreateWallet(
-            userId,
-            WalletRole.INVESTOR,
-            ['ARC-TESTNET', 'ETH-SEPOLIA', 'AVAX-FUJI', 'BASE-TESTNET']
-          );
-          console.log('Wallet created for user:', userId);
-          
-          // Link the external MetaMask wallet
-          await this.usersService.linkExternalWallet(userId, WalletRole.INVESTOR, address);
-          console.log('External wallet linked:', address);
-          
-          // Retrieve the newly created user wallet
-          userWallet = this.usersService.findUserByAddress(address);
-          
-          if (!userWallet) {
-            throw new Error('Wallet created but not found in storage');
-          }
-          
-          console.log('New user wallet created:', {
-            userId: userWallet.userId,
-            role: userWallet.role,
-          });
-        } catch (createError) {
-          console.error('Failed to create user wallet:', createError);
-          throw new NotFoundException('User wallet not found and auto-creation failed');
-        }
+        // Do NOT auto-create a wallet here. Let the frontend call POST /wallets/:userId
+        // to create a wallet explicitly (include externalWallets query param to link addresses).
+        throw new NotFoundException(
+          `User wallet not found for address ${address}. Create one by POST /wallets/:userId?role=investor|issuer&externalWallets=${address}`
+        );
       }
       
       console.log('User found:', {
