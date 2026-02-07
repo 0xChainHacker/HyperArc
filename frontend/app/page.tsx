@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { Space_Grotesk } from 'next/font/google';
+
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'] });
 import { api, Product, PortfolioHolding } from './api/client';
 import { SiweMessage } from 'siwe';
 import { BrowserProvider, getAddress, getDefaultProvider } from 'ethers';
@@ -701,7 +705,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className={`${spaceGrotesk.className} min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800`}>
       {/* Header */}
       <header className="border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -710,9 +714,19 @@ export default function Home() {
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-xl">H</span>
               </div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                HyperArc
-              </h1>
+              <div className="flex items-center gap-6">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  HyperArc
+                </h1>
+                <nav className="hidden md:flex items-center gap-4 text-sm">
+                  <Link href="/" className="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Home
+                  </Link>
+                  <Link href="/guide" className="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Guide
+                  </Link>
+                </nav>
+              </div>
             </div>
 
             <div className="flex items-center gap-6">
@@ -850,6 +864,58 @@ export default function Home() {
 
         {!loading && (
           <>
+            <section className="relative overflow-hidden rounded-3xl border border-slate-200/70 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/70 shadow-2xl mb-10">
+              <div className="absolute inset-0">
+                <div className="absolute -top-24 -right-16 h-72 w-72 rounded-full bg-gradient-to-br from-blue-400/35 to-purple-500/35 blur-3xl" />
+                <div className="absolute -bottom-28 -left-16 h-72 w-72 rounded-full bg-gradient-to-tr from-emerald-300/25 to-cyan-400/25 blur-3xl" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),transparent_60%)] dark:bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.8),transparent_60%)]" />
+              </div>
+              <div className="relative p-8 md:p-12">
+                <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-300">
+                      Tokenized Capital Infrastructure
+                    </p>
+                    <h2 className="mt-3 text-3xl md:text-5xl font-semibold text-slate-900 dark:text-white tracking-tight">
+                      Turn real-world assets into investable digital shares
+                    </h2>
+                    <p className="mt-3 max-w-2xl text-sm md:text-base text-slate-600 dark:text-slate-300">
+                      HyperArc connects accredited investors and SPV issuers with compliant, on-chain capital flows and real-time USDC settlement.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={walletConnected ? undefined : handleConnectWallet}
+                      disabled={connectingWallet}
+                      className="px-5 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium shadow-md hover:from-blue-700 hover:to-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                    >
+                      {walletConnected ? 'Wallet Connected' : (connectingWallet ? 'Connecting...' : 'Connect Wallet')}
+                    </button>
+                    <Link
+                      href="/guide"
+                      className="px-5 py-3 rounded-lg border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 bg-white/70 dark:bg-slate-900/60 hover:bg-white dark:hover:bg-slate-900 transition-colors"
+                    >
+                      View Platform Guide
+                    </Link>
+                  </div>
+                </div>
+                <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    { title: 'On-Chain Transparency', desc: 'Every subscription is recorded on-chain with auditable fund flow.' },
+                    { title: 'Unified USDC', desc: 'Circle Wallet consolidates multi-chain balances in one view.' },
+                    { title: 'Instant Distributions', desc: 'Issuers can declare dividends and settle directly to investors.' },
+                  ].map((item) => (
+                    <div
+                      key={item.title}
+                      className="rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-900/70 p-4 shadow-sm"
+                    >
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.title}</p>
+                      <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
             {/* Investor View */}
             {userRole === 'investor' && (
               <>
