@@ -867,7 +867,7 @@ export default function Home() {
                         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
                           <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Pending Dividends</p>
                           <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                            ${Number(portfolio.reduce((sum, item) => sum + Number(item.pendingDividend || 0), 0)).toFixed(2)}
+                            ${Number(portfolio.reduce((sum, item) => sum + (Number(item.pendingDividend || 0) / 1_000_000), 0)).toFixed(2)}
                           </p>
                         </div>
                         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
@@ -1008,7 +1008,7 @@ export default function Home() {
                                 </div>
                                 <button
                                   onClick={() => handleClaimDividend(holding.productId)}
-                                  disabled={holding.pendingDividend === 0}
+                                  disabled={(Number(holding.pendingDividend || 0) === 0)}
                                   className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
                                 >
                                   Claim Dividend
@@ -1028,7 +1028,7 @@ export default function Home() {
                                 <div>
                                   <p className="text-xs text-slate-500 dark:text-slate-400">Pending Dividend</p>
                                   <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                                    ${Number(holding.pendingDividend || 0).toFixed(2)}
+                                    ${(Number(holding.pendingDividend || 0) / 1_000_000).toFixed(2)}
                                   </p>
                                 </div>
                               </div>
