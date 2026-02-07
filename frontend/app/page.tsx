@@ -813,7 +813,13 @@ export default function Home() {
                       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
                         <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Total Invested</p>
                         <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-                          ${Number(portfolio.reduce((sum, item) => sum + Number(item.invested || 0), 0)).toFixed(2)}
+                          ${Number(
+                            portfolio.reduce((sum, item) => {
+                              const prod = products.find((p) => p.id === item.productId);
+                              const unitPrice = prod ? Number(prod.price || 0) : 0;
+                              return sum + Number(item.units || 0) * unitPrice;
+                            }, 0),
+                          ).toFixed(2)}
                         </p>
                       </div>
                       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
