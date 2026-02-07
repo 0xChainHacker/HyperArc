@@ -51,6 +51,8 @@ export default function Home() {
   const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>({});
   const [depositStatus, setDepositStatus] = useState<Record<string, 'idle' | 'loading' | 'success' | 'error'>>({});
   const [depositMessages, setDepositMessages] = useState<Record<string, string>>({});
+  const [subscribingStatus, setSubscribingStatus] = useState<Record<number, 'idle' | 'loading' | 'success' | 'error'>>({});
+  const [subscribeMessages, setSubscribeMessages] = useState<Record<number, string>>({});
   const [circleWalletInfo, setCircleWalletInfo] = useState<any>(null);
   const [chainUSDCBalances, setChainUSDCBalances] = useState<Record<string, any[]>>({});
   const [unifiedUSDCBalance, setUnifiedUSDCBalance] = useState<number | null>(null);
@@ -302,13 +304,31 @@ export default function Home() {
       alert('Please connect your wallet first');
       return;
     }
+
+    setSubscribingStatus((s) => ({ ...s, [productId]: 'loading' }));
+    setSubscribeMessages((s) => ({ ...s, [productId]: '' }));
+
     try {
       const amountE6 = (amount * 1_000_000).toString();
-      await api.subscribe(userId, productId, amountE6);
-      alert('Subscription successful!');
-      loadData();
+
+      console.log('Starting transferToArc before subscribe', { userId, productId, amount });
+      // call transferToArc with required body: { userId, sourceChain, amount, maxFee }
+      const transfer = await api.transferToArc(userId, 'BASE-SEPOLIA', amount, '2010000');
+      console.log('transferToArc response:', transfer);
+
+      console.log('Calling subscribe', { userId, productId, amountE6 });
+      const sub = await api.subscribe(userId, productId, amountE6);
+      console.log('subscribe response:', sub);
+
+      setSubscribingStatus((s) => ({ ...s, [productId]: 'success' }));
+      setSubscribeMessages((s) => ({ ...s, [productId]: sub?.message || 'Purchased' }));
+      await loadData();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to subscribe');
+      console.error('subscribe flow error:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setSubscribingStatus((s) => ({ ...s, [productId]: 'error' }));
+      setSubscribeMessages((s) => ({ ...s, [productId]: message }));
+      alert(message);
     }
   };
 
@@ -764,10 +784,17 @@ export default function Home() {
                               const amount = prompt('Enter amount in USDC to invest:');
                               if (amount) handleSubscribe(product.id, parseFloat(amount));
                             }}
-                            className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all"
+                            disabled={subscribingStatus[product.id] === 'loading'}
+                            className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
                           >
-                            Subscribe Now
+                            {subscribingStatus[product.id] === 'loading' ? 'Purchasing...' : 'Subscribe Now'}
                           </button>
+                          {subscribingStatus[product.id] === 'success' && (
+                            <p className="text-sm text-green-700 dark:text-green-300 mt-2">{subscribeMessages[product.id] || 'Purchase complete'}</p>
+                          )}
+                          {subscribingStatus[product.id] === 'error' && (
+                            <p className="text-sm text-red-700 dark:text-red-300 mt-2">{subscribeMessages[product.id]}</p>
+                          )}
                         </div>
                       ))}
                     {products.filter((p) => p.status === 'approved').length === 0 && (

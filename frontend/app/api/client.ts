@@ -243,6 +243,33 @@ class HyperArcAPI {
     }
   }
 
+  async transferToArc(userId: string, sourceChain: string, amount: number | string, maxFee: string): Promise<any> {
+    const url = `${this.baseUrl}/gateway/transfer-to-arc`;
+    const payload = { userId, sourceChain, amount, maxFee };
+    console.log('[api] transferToArc ->', url, payload);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('[api] transferToArc response status:', response.status);
+
+    const handled = await this.handleResponse(response);
+    const text = await handled.text();
+    try {
+      const data = JSON.parse(text);
+      console.log('[api] transferToArc response json:', data);
+      if (!response.ok) throw new Error(data?.message || 'Failed to transfer to arc');
+      return data;
+    } catch (e) {
+      console.log('[api] transferToArc response text:', text);
+      if (!response.ok) throw new Error(text || 'Failed to transfer to arc');
+      return text;
+    }
+  }
+
   async getGatewayTransactionStatus(txId: string): Promise<any> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/gateway/transactions/${txId}`));
     if (!response.ok) throw new Error('Failed to get gateway transaction status');
