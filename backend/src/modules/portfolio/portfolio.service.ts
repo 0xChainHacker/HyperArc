@@ -8,6 +8,7 @@ export interface PortfolioHolding {
   productName: string;
   units: string;
   pendingDividend: string;
+  invested?: number;
 }
 
 export interface Portfolio {
@@ -16,6 +17,7 @@ export interface Portfolio {
   usdcBalance: string;
   holdings: PortfolioHolding[];
   totalPendingDividends: string;
+  totalInvested?: number;
 }
 
 @Injectable()
@@ -61,6 +63,7 @@ export class PortfolioService {
     // Get holdings and pending dividends for each product
     const holdings: PortfolioHolding[] = [];
     let totalPending = BigInt(0);
+    let totalInvestedE6 = BigInt(0);
 
     for (const product of products) {
       try {
@@ -72,11 +75,22 @@ export class PortfolioService {
             arcAddress,
           );
 
+          // Calculate invested = units * priceE6 (priceE6 is USDC with 6 decimals)
+          let investedNumber = 0;
+          try {
+            const investedE6 = BigInt(units) * BigInt(product.priceE6 || '0');
+            totalInvestedE6 += investedE6;
+            investedNumber = Number(investedE6) / 1e6; // convert from e6 to USDC decimal
+          } catch (e) {
+            this.logger.warn(`Failed to compute invested for product ${product.productId}`, (e as Error).message);
+          }
+
           holdings.push({
             productId: product.productId,
             productName: product.name,
             units,
             pendingDividend,
+            invested: investedNumber,
           });
 
           totalPending += BigInt(pendingDividend);
@@ -92,6 +106,7 @@ export class PortfolioService {
       usdcBalance,
       holdings,
       totalPendingDividends: totalPending.toString(),
+      totalInvested: Number(totalInvestedE6) / 1e6,
     };
   }
 
