@@ -33,6 +33,9 @@
     "rxjs": "^7.8.2",
     "siwe": "^3.0.0"
   },
+  "optionalDependencies": {
+    "@upstash/redis": "^2.0.0"
+  },
   "devDependencies": {
     "@nestjs/cli": "^11.0.16",
     "@nestjs/schematics": "^11.0.9",

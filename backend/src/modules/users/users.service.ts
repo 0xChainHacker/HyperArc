@@ -4,6 +4,7 @@ import { CircleGatewayService, WalletChain } from '../circle/circle-gateway.serv
 import { ArcContractService } from '../chain/arc-contract.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { KVService } from '../kv/kv.service';
 
 export enum WalletRole {
   ISSUER = 'issuer',      // SPV issuer wallet (create products, declare dividends)
@@ -33,15 +34,17 @@ export class UsersService implements OnModuleInit {
   // Use composite key: userId-role as Map key
   private readonly userWallets = new Map<string, UserWallet>();
   private readonly storageFile = path.join(process.cwd(), 'data', 'user-wallets.json');
+  private readonly kvKey = 'user-wallets';
 
   constructor(
     private readonly circleWalletService: CircleWalletService,
     private readonly circleGatewayService: CircleGatewayService,
     private readonly arcContractService: ArcContractService,
+    private readonly kvService: KVService,
   ) {}
 
-  onModuleInit() {
-    this.loadWalletsFromFile();
+  async onModuleInit(): Promise<void> {
+    await this.loadWalletsFromStorage();
   }
 
   /**
@@ -68,10 +71,25 @@ export class UsersService implements OnModuleInit {
   }
 
   /**
-   * Load user wallets from JSON file
+   * Load user wallets from Vercel KV if available, otherwise fall back to JSON file
    */
-  private loadWalletsFromFile() {
+  private async loadWalletsFromStorage() {
     try {
+      // Try KV first
+      if (this.kvService?.isAvailable && this.kvService.isAvailable()) {
+        const raw = await this.kvService.get(this.kvKey);
+        if (raw) {
+          const wallets: UserWallet[] = JSON.parse(raw as any);
+          wallets.forEach(wallet => {
+            const key = this.getMapKey(wallet.userId, wallet.role);
+            this.userWallets.set(key, wallet);
+          });
+          this.logger.log(`Loaded ${wallets.length} wallets from Vercel KV`);
+          return;
+        }
+      }
+
+      // Fallback to local file
       if (fs.existsSync(this.storageFile)) {
         const data = fs.readFileSync(this.storageFile, 'utf-8');
         const wallets: UserWallet[] = JSON.parse(data);
@@ -79,30 +97,46 @@ export class UsersService implements OnModuleInit {
           const key = this.getMapKey(wallet.userId, wallet.role);
           this.userWallets.set(key, wallet);
         });
-        this.logger.log(`Loaded ${wallets.length} wallets from storage`);
+        this.logger.log(`Loaded ${wallets.length} wallets from local storage file`);
       } else {
         this.logger.log('No existing wallet storage found, starting fresh');
       }
-    } catch (error) {
-      this.logger.error('Failed to load wallets from file', error.message);
+    } catch (error: any) {
+      this.logger.error('Failed to load wallets from storage', error?.message || error);
     }
   }
 
   /**
    * Save user wallets to JSON file
    */
-  private saveWalletsToFile() {
+  private async saveWalletsToFile() {
     try {
-      const dir = path.dirname(this.storageFile);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      
       const wallets = Array.from(this.userWallets.values());
-      fs.writeFileSync(this.storageFile, JSON.stringify(wallets, null, 2), 'utf-8');
-      this.logger.log(`Saved ${wallets.length} wallets to storage`);
-    } catch (error) {
-      this.logger.error('Failed to save wallets to file', error.message);
+      const payload = JSON.stringify(wallets, null, 2);
+
+      // Try to persist to KV when available
+      if (this.kvService?.isAvailable && this.kvService.isAvailable()) {
+        const ok = await this.kvService.set(this.kvKey, payload);
+        if (ok) {
+          this.logger.log(`Saved ${wallets.length} wallets to Vercel KV`);
+        } else {
+          this.logger.warn('Failed to save wallets to KV; falling back to file');
+        }
+      }
+
+      // Always also write local file as a fallback for development
+      try {
+        const dir = path.dirname(this.storageFile);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(this.storageFile, payload, 'utf-8');
+        this.logger.log(`Saved ${wallets.length} wallets to local storage file`);
+      } catch (err: any) {
+        this.logger.warn('Failed to save wallets to local file', err?.message || err);
+      }
+    } catch (error: any) {
+      this.logger.error('Failed to save wallets to storage', error?.message || error);
     }
   }
 
@@ -158,7 +192,7 @@ export class UsersService implements OnModuleInit {
     };
 
     this.userWallets.set(key, userWallet);
-    this.saveWalletsToFile();
+    await this.saveWalletsToFile();
     
     this.logger.log(
       `${role} wallet created successfully for user ${userId}. ` +
@@ -376,7 +410,7 @@ export class UsersService implements OnModuleInit {
     };
     
     this.userWallets.set(key, updatedWallet);
-    this.saveWalletsToFile();
+    await this.saveWalletsToFile();
     
     this.logger.log(
       `Blockchains added successfully. WalletId: ${baseWalletId} (unchanged), ` +
@@ -421,8 +455,8 @@ export class UsersService implements OnModuleInit {
     }
     userWallet.externalWallets.push(normalizedAddress);
 
-    // Save to file
-    this.saveWalletsToFile();
+    // Save to storage
+    await this.saveWalletsToFile();
     this.logger.log(`External wallet ${normalizedAddress} linked to ${userId}:${role}`);
 
     return true;
@@ -437,7 +471,7 @@ export class UsersService implements OnModuleInit {
     
     if (userWallet) {
       userWallet.lastLogin = new Date().toISOString();
-      this.saveWalletsToFile();
+      await this.saveWalletsToFile();
       this.logger.log(`Last login updated for ${userId}:${role}`);
     }
   }

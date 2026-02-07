@@ -1,7 +1,8 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { ArcContractService } from '../chain/arc-contract.service';
 import { UsersService, WalletRole } from '../users/users.service';
 import { CreateProductDto } from './dto/product.dto';
+import { KVService } from '../kv/kv.service';
 
 export interface Product {
   productId: number;
@@ -25,42 +26,154 @@ export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
   private readonly productsDir = './data/product';
   private readonly metadataFile = './data/product/metadata.json';
+  private readonly kvProductsKey = 'products:list';
+  private readonly kvMetadataKey = 'products:metadata';
   private products: Product[] = [];
   private nextProductId = 1;
 
   constructor(
     private readonly arcContractService: ArcContractService,
     private readonly usersService: UsersService,
-  ) {
-    this.loadProducts();
+    private readonly kvService: KVService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.loadProductsFromStorage();
+  }
+
+  /**
+   * Admin utility: sync local product files (and metadata) to KV as per-key entries and index
+   */
+  async syncLocalProductsToKV(): Promise<{ imported: number }> {
+    const fs = require('fs');
+    const path = require('path');
+    try {
+      if (!fs.existsSync(this.productsDir)) {
+        return { imported: 0 };
+      }
+
+      const files = fs.readdirSync(this.productsDir).filter((f: string) => f.startsWith('product-') && f.endsWith('.json'));
+      const products: Product[] = [];
+      for (const file of files) {
+        try {
+          const data = fs.readFileSync(path.join(this.productsDir, file), 'utf8');
+          const p = JSON.parse(data);
+          products.push(p);
+        } catch (e) {
+          this.logger.warn(`Failed to parse ${file}: ${e?.message || e}`);
+        }
+      }
+
+      // metadata
+      let meta = { nextProductId: this.nextProductId };
+      if (fs.existsSync(this.metadataFile)) {
+        try {
+          meta = JSON.parse(fs.readFileSync(this.metadataFile, 'utf8'));
+        } catch (e) {
+          this.logger.warn('Failed to parse metadata file', e?.message || e);
+        }
+      }
+
+      if (this.kvService?.isAvailable && this.kvService.isAvailable()) {
+        try {
+          // write each product
+          for (const p of products) {
+            await this.kvService.set(`product-${p.productId}`, JSON.stringify(p, null, 2));
+          }
+          const ids = products.map(p => p.productId);
+          await this.kvService.set(this.kvProductsKey, JSON.stringify(ids));
+          await this.kvService.set(this.kvMetadataKey, JSON.stringify(meta));
+          this.logger.log(`Synced ${products.length} products and metadata to KV`);
+        } catch (e) {
+          this.logger.error('Failed to write products to KV', e?.message || e);
+          throw e;
+        }
+      }
+
+      return { imported: products.length };
+    } catch (err: any) {
+      this.logger.error('syncLocalProductsToKV failed', err?.message || err);
+      return { imported: 0 };
+    }
   }
 
   /**
    * Load all products from individual JSON files in /data/product/
    */
-  private loadProducts() {
+  private async loadProductsFromStorage() {
     try {
+      // Try KV first
+      if (this.kvService?.isAvailable && this.kvService.isAvailable()) {
+        const raw = await this.kvService.get(this.kvProductsKey);
+        const metaRaw = await this.kvService.get(this.kvMetadataKey);
+        if (metaRaw) {
+          try {
+            const meta = JSON.parse(metaRaw as any);
+            this.nextProductId = meta.nextProductId || this.nextProductId;
+          } catch (e) {
+            this.logger.warn('Failed to parse products metadata from KV', e?.message || e);
+          }
+        }
+
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw as any);
+
+            // Support two KV formats:
+            // 1) Entire products array stored at kvProductsKey (backwards-compat)
+            // 2) Index array of productIds stored at kvProductsKey, with each product at key `product-{id}`
+            if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0].productId) {
+              this.products = parsed as Product[];
+              this.logger.log(`Loaded ${this.products.length} products (full array) from Vercel KV`);
+              return;
+            }
+
+            // If parsed is array of ids, fetch each product key
+            if (Array.isArray(parsed)) {
+              const ids: number[] = parsed.map((v: any) => Number(v)).filter(n => !isNaN(n));
+              const items: Product[] = [];
+              for (const id of ids) {
+                try {
+                  const itemRaw = await this.kvService.get(`product-${id}`);
+                  if (itemRaw) {
+                    const item = JSON.parse(itemRaw as any);
+                    items.push(item);
+                  }
+                } catch (ie) {
+                  this.logger.warn(`Failed to load product-${id} from KV`, ie?.message || ie);
+                }
+              }
+              if (items.length > 0) {
+                this.products = items;
+                this.logger.log(`Loaded ${this.products.length} products (per-key) from Vercel KV`);
+                return;
+              }
+            }
+          } catch (e) {
+            this.logger.warn('Failed to parse products list from KV', e?.message || e);
+          }
+        }
+      }
+
+      // Fallback to filesystem
       const fs = require('fs');
       const path = require('path');
-      
-      // Create directory if not exists
       if (!fs.existsSync(this.productsDir)) {
         fs.mkdirSync(this.productsDir, { recursive: true });
       }
 
-      // Load metadata (nextProductId)
+      // Load metadata
       if (fs.existsSync(this.metadataFile)) {
         const metaData = fs.readFileSync(this.metadataFile, 'utf8');
         const meta = JSON.parse(metaData);
-        this.nextProductId = meta.nextProductId || 1;
+        this.nextProductId = meta.nextProductId || this.nextProductId;
       } else {
-        this.saveMetadata();
+        await this.saveMetadata();
       }
 
       // Load all product files
       const files = fs.readdirSync(this.productsDir);
       this.products = [];
-      
       for (const file of files) {
         if (file.startsWith('product-') && file.endsWith('.json')) {
           const filePath = path.join(this.productsDir, file);
@@ -71,8 +184,8 @@ export class ProductsService {
       }
 
       this.logger.log(`Loaded ${this.products.length} products from ${this.productsDir}`);
-    } catch (error) {
-      this.logger.error('Failed to load products from directory', error.message);
+    } catch (error: any) {
+      this.logger.error('Failed to load products from storage', error?.message || error);
       this.products = [];
     }
   }
@@ -80,33 +193,54 @@ export class ProductsService {
   /**
    * Save metadata (nextProductId)
    */
-  private saveMetadata() {
+  private async saveMetadata() {
     try {
+      const payload = JSON.stringify({ nextProductId: this.nextProductId }, null, 2);
+      if (this.kvService?.isAvailable && this.kvService.isAvailable()) {
+        await this.kvService.set(this.kvMetadataKey, payload);
+        this.logger.log('Saved products metadata to Vercel KV');
+      }
       const fs = require('fs');
-      const data = JSON.stringify({ nextProductId: this.nextProductId }, null, 2);
-      fs.writeFileSync(this.metadataFile, data, 'utf8');
-    } catch (error) {
-      this.logger.error('Failed to save metadata', error.message);
+      fs.writeFileSync(this.metadataFile, payload, 'utf8');
+    } catch (error: any) {
+      this.logger.error('Failed to save metadata', error?.message || error);
     }
   }
 
   /**
    * Save a single product to its own JSON file
    */
-  private saveProduct(product: Product) {
+  private async saveProduct(product: Product) {
     try {
+      const data = JSON.stringify(product, null, 2);
+      // Update in-memory
+      const idx = this.products.findIndex(p => p.productId === product.productId);
+      if (idx >= 0) this.products[idx] = product;
+      else this.products.push(product);
+
+      // Persist to KV: write single product key and update index
+      if (this.kvService?.isAvailable && this.kvService.isAvailable()) {
+        try {
+          // write per-product key
+          await this.kvService.set(`product-${product.productId}`, JSON.stringify(product, null, 2));
+          // update index (store array of ids)
+          const ids = this.products.map(p => p.productId);
+          await this.kvService.set(this.kvProductsKey, JSON.stringify(ids));
+          this.logger.log(`Saved product ${product.productId} to Vercel KV (per-key) and updated index`);
+        } catch (e) {
+          this.logger.warn('Failed to save product to KV', e?.message || e);
+        }
+      }
+
+      // Also write to filesystem for local dev
       const fs = require('fs');
       const path = require('path');
-      
       const fileName = `product-${product.productId}.json`;
       const filePath = path.join(this.productsDir, fileName);
-      
-      const data = JSON.stringify(product, null, 2);
       fs.writeFileSync(filePath, data, 'utf8');
-      
       this.logger.log(`Saved product ${product.productId} to ${fileName}`);
-    } catch (error) {
-      this.logger.error(`Failed to save product ${product.productId}`, error.message);
+    } catch (error: any) {
+      this.logger.error(`Failed to save product ${product.productId}`, error?.message || error);
     }
   }
 
@@ -162,8 +296,8 @@ export class ProductsService {
       };
 
       this.products.push(product);
-      this.saveProduct(product);
-      this.saveMetadata();
+      await this.saveProduct(product);
+      await this.saveMetadata();
 
       this.logger.log(
         `Product request created successfully. ` +
@@ -202,7 +336,7 @@ export class ProductsService {
     product.active = true;
     product.approvedAt = new Date().toISOString();
 
-    this.saveProduct(product);
+    await this.saveProduct(product);
 
     this.logger.log(
       `Product ${productId} approved. Deployment to blockchain should be done via separate script.`
@@ -229,7 +363,7 @@ export class ProductsService {
     }
 
     product.status = 'rejected';
-    this.saveProduct(product);
+    await this.saveProduct(product);
 
     this.logger.log(`Product ${productId} rejected${reason ? `: ${reason}` : ''}`);
 
@@ -240,6 +374,43 @@ export class ProductsService {
    * Get pending products (for admin review)
    */
   async getPendingProducts(): Promise<Product[]> {
+    // If KV is available, attempt to refresh products from KV so external writes
+    // (e.g., another process writing to Upstash) are reflected without restart.
+    try {
+      if (this.kvService?.isAvailable && this.kvService.isAvailable()) {
+        const raw = await this.kvService.get(this.kvProductsKey);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw as any);
+            // Full-array format
+            if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0].productId) {
+              this.products = parsed as Product[];
+            } else if (Array.isArray(parsed)) {
+              // parsed is array of ids
+              const ids: number[] = parsed.map((v: any) => Number(v)).filter(n => !isNaN(n));
+              const items: Product[] = [];
+              for (const id of ids) {
+                try {
+                  const itemRaw = await this.kvService.get(`product-${id}`);
+                  if (itemRaw) {
+                    const item = JSON.parse(itemRaw as any);
+                    items.push(item);
+                  }
+                } catch (ie) {
+                  this.logger.warn(`Failed to load product-${id} from Upstash`, ie?.message || ie);
+                }
+              }
+              if (items.length > 0) this.products = items;
+            }
+          } catch (e) {
+            this.logger.warn('Failed to parse products list from Upstash', e?.message || e);
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn('Failed to refresh pending products from Upstash', err?.message || err);
+    }
+
     return this.products.filter((p) => p.status === 'pending');
   }
 
@@ -364,7 +535,7 @@ export class ProductsService {
       const localProduct = this.products.find((p) => p.productId === productId);
       if (localProduct) {
         localProduct.active = false;
-        this.saveProduct(localProduct);
+        await this.saveProduct(localProduct);
       }
 
       this.logger.log(`Product ${productId} deactivated successfully`);
