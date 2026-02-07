@@ -33,6 +33,7 @@ export default function Home() {
   const [pendingProducts, setPendingProducts] = useState<Product[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioHolding[]>([]);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [productTotalUnits, setProductTotalUnits] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -256,6 +257,24 @@ export default function Home() {
         // Load products (public data)
         const productsData = await api.listProducts();
         setProducts(productsData);
+
+        // Fetch authoritative total units per product from backend
+        try {
+          const map: Record<number, number> = {};
+          await Promise.all(
+            (productsData || []).map(async (p: any) => {
+              try {
+                const res = await api.getProductTotalUnits(p.id);
+                map[p.id] = Number(res?.totalUnits ?? p.totalUnits ?? 0);
+              } catch (e) {
+                map[p.id] = Number(p.totalUnits ?? 0);
+              }
+            }),
+          );
+          setProductTotalUnits(map);
+        } catch (e) {
+          // ignore; leave productTotalUnits empty
+        }
 
         // Load pending products only if authenticated
         if (walletConnected && userId) {
@@ -1134,25 +1153,25 @@ export default function Home() {
                               <div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Units</p>
                                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                                  {walletConnected ? (product.totalUnits || 0) : 0}
+                                  {productTotalUnits[product.id] ?? product.totalUnits ?? 0}
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Sold Units</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Price per Unit</p>
                                 <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                  {walletConnected ? (product.soldUnits || 0) : 0}
+                                  ${Number(product.price ?? 0).toFixed(2)}
                                 </p>
                               </div>
                               <div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Raised</p>
                                 <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                  ${walletConnected ? ((product.soldUnits || 0) * (product.price || 0)).toFixed(2) : '0.00'}
+                                  ${((Number(productTotalUnits[product.id] ?? product.totalUnits ?? 0) * Number(product.price ?? 0))).toFixed(2)}
                                 </p>
                               </div>
                               <div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Available to Withdraw</p>
                                 <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                  ${walletConnected ? ((product.soldUnits || 0) * (product.price || 0)).toFixed(2) : '0.00'}
+                                  ${((Number(productTotalUnits[product.id] ?? product.totalUnits ?? 0) * Number(product.price ?? 0))).toFixed(2)}
                                 </p>
                               </div>
                             </div>
