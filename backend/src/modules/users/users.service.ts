@@ -512,7 +512,7 @@ export class UsersService implements OnModuleInit {
    * Get detailed wallet balance (per-chain breakdown with all assets)
    * Queries each chain's walletId separately and aggregates results
    * 
-   * ✅ Recommended for testnet: Returns all tokens including USDC-TESTNET (18 decimals)
+   * Recommended for testnet: Returns all tokens including USDC-TESTNET (18 decimals)
    * Use this API to see actual balances on testnets
    */
   async getDetailedWalletBalance(userId: string, role: WalletRole = WalletRole.INVESTOR) {

@@ -12,7 +12,7 @@ export class DepositToGatewayDto {
 
 export class TransferToArcDto {
   userId: string;
-  sourceChain: 'ETH-SEPOLIA' | 'BASE-SEPOLIA' | 'AVAX-FUJI';
+  sourceChain?: 'ARC-TESTNET' | 'ETH-SEPOLIA' | 'BASE-SEPOLIA' | 'AVAX-FUJI';
   amount: number;
   maxFee?: string;
 }

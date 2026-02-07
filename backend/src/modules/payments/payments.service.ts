@@ -177,31 +177,184 @@ export class PaymentsService {
       );
     }
 
-    this.logger.log(`Source: ${dto.sourceChain} (${sourceWallet.address})`);
+    this.logger.log(`Requested source: ${dto.sourceChain ?? 'AUTO'}`);
     this.logger.log(`Destination: ARC-TESTNET (${arcWallet.address})`);
     this.logger.log(`Amount: ${dto.amount} USDC`);
 
-    // Execute transfer
-    const result = await this.circleGatewayService.transferToArc({
-      sourceChain: dto.sourceChain as Exclude<WalletChain, 'ARC-TESTNET'>,
-      sourceWalletId: sourceWallet.walletId,
-      destinationWalletId: arcWallet.walletId,
-      recipientAddress: arcWallet.address,
-      amount: dto.amount,
-      maxFee: dto.maxFee,
-    });
+    // Determine search order. If caller provided a sourceChain, try it first,
+    // then fall back to preferred order. Preferred order: BASE -> AVAX -> ETH
+    const preferredOrder: WalletChain[] = [
+      WalletChain.ARC_TESTNET,
+      WalletChain.BASE_SEPOLIA,
+      WalletChain.AVAX_FUJI,
+      WalletChain.ETH_SEPOLIA,
+    ];
+    const searchOrder: WalletChain[] = [];
+    if (dto.sourceChain) {
+      // if provided and valid, start with normalized provided chain
+      const provided = dto.sourceChain as WalletChain;
+      searchOrder.push(provided);
+      for (const c of preferredOrder) if (c !== provided) searchOrder.push(c);
+    } else {
+      searchOrder.push(...preferredOrder);
+    }
+
+    // Query unified balances for searchOrder
+    const unified = await this.usersService.getUnifiedUSDCBalance(dto.userId, WalletRole.INVESTOR, searchOrder as any);
+    const balanceMap: Record<string, number> = {};
+    for (const b of unified.balancesByChain || []) {
+      balanceMap[b.chain] = parseFloat(b.balanceUSDC);
+    }
+
+    // Build sourceWalletIds from user wallet
+    const sourceWalletIds: Partial<Record<WalletChain, string>> = {};
+    for (const c of searchOrder) {
+      const cw = userWallet.circleWallet[c as string];
+      if (cw) sourceWalletIds[c] = cw.walletId;
+    }
+
+    // Default maxFee per chain (micro USDC, 6 decimals)
+    const defaultMaxFeeByChain: Partial<Record<WalletChain, string>> = {
+      [WalletChain.ARC_TESTNET]: '20149', // 0.020149 USDC (default for Arc)
+      [WalletChain.AVAX_FUJI]: '20149', // 0.020149 USDC
+      [WalletChain.BASE_SEPOLIA]: '10247', // 0.010247 USDC
+      [WalletChain.ETH_SEPOLIA]: '2000325', // 2.000325 USDC
+    };
+
+    const transfers: Array<any> = [];
+    let remaining = Number(dto.amount);
+    const buffer = 0.001; // leave tiny buffer per chain
+
+    for (const chain of searchOrder) {
+      if (remaining <= 1e-9) break;
+      const available = balanceMap[chain] ?? 0;
+      const walletId = sourceWalletIds[chain];
+      if (!walletId) {
+        this.logger.log(`Skipping ${chain}: no walletId configured for user`);
+        continue;
+      }
+      if (available <= buffer) {
+        this.logger.log(`Skipping ${chain}: available ${available} <= buffer ${buffer}`);
+        continue;
+      }
+
+      const canUse = Math.max(0, available - buffer);
+      let take = Math.min(canUse, remaining);
+      if (take <= 0) continue;
+
+      // Work in micro-units to avoid fractional rounding issues
+      const availableMicros = Math.floor(available * 1_000_000);
+      let amountMicros = Math.floor(take * 1_000_000);
+
+      // helper to normalize maxFee input (accepts micros string or decimal string)
+      const parseFeeToMicros = (fee?: string) => {
+        if (!fee) return undefined;
+        if (fee.includes('.')) {
+          const f = parseFloat(fee);
+          if (Number.isNaN(f)) return undefined;
+          return Math.ceil(f * 1_000_000);
+        }
+        const n = parseInt(fee, 10);
+        return Number.isNaN(n) ? undefined : n;
+      };
+
+      // choose maxFee: prefer caller provided, otherwise per-chain default
+      const providedMaxFeeMicros = parseFeeToMicros(dto.maxFee as any);
+      const defaultMaxFeeMicros = defaultMaxFeeByChain[chain] ? parseInt(defaultMaxFeeByChain[chain]!, 10) : undefined;
+      let maxFeeMicros = providedMaxFeeMicros ?? defaultMaxFeeMicros ?? 2010000;
+
+      // ensure amount + fee fits into available; if not, reduce amount
+      if (amountMicros + maxFeeMicros > availableMicros) {
+        amountMicros = Math.max(0, availableMicros - maxFeeMicros);
+        if (amountMicros <= 0) {
+          this.logger.log(`Skipping ${chain}: not enough available to cover fee ${maxFeeMicros} micros`);
+          continue;
+        }
+        take = amountMicros / 1_000_000;
+        this.logger.log(`Adjusted transfer from ${chain} to ${take} USDC to account for fee`);
+      }
+
+      this.logger.log(`Attempting transfer from ${chain}: taking ${take} USDC (available ${available})`);
+      try {
+        const res = await this.circleGatewayService.transferToArc({
+          sourceChain: chain as Exclude<WalletChain, 'ARC-TESTNET'>,
+          sourceWalletId: walletId,
+          destinationWalletId: arcWallet.walletId,
+          recipientAddress: arcWallet.address,
+          amount: amountMicros / 1_000_000,
+          maxFee: String(maxFeeMicros),
+        });
+
+        const sent = amountMicros / 1_000_000;
+        transfers.push({ sourceChain: chain, amount: sent, transferId: res.transferId, attestation: res.attestation, mintTxId: res.mintTxId, status: 'success' });
+        remaining -= sent;
+        this.logger.log(`Transferred ${sent} USDC from ${chain}. Remaining: ${remaining} USDC`);
+      } catch (err: any) {
+        this.logger.error(`Failed transfer from ${chain}:`, err?.message ?? err);
+
+        // If Gateway complains about insufficient max fee, try to parse required fee and retry once
+        const msg = err?.response?.data?.message ?? err?.message ?? '';
+        const m = String(msg).match(/expected at least ([0-9.]+)/i);
+        if (m) {
+          const requiredDecimal = parseFloat(m[1]);
+          if (!Number.isNaN(requiredDecimal) && requiredDecimal > 0) {
+            const requiredMicros = Math.ceil(requiredDecimal * 1_000_000);
+            this.logger.log(`Retrying ${chain} transfer with increased maxFee=${requiredMicros} (required ${requiredDecimal} USDC)`);
+
+            // If increasing fee causes amount+fee to exceed available, reduce amount accordingly
+            if (amountMicros + requiredMicros > availableMicros) {
+              const newAmountMicros = Math.max(0, availableMicros - requiredMicros);
+              if (newAmountMicros <= 0) {
+                this.logger.error(`After increasing fee, ${chain} has insufficient funds to cover fee + any amount. Skipping.`);
+                transfers.push({ sourceChain: chain, amount: take, status: 'failed', error: 'insufficient funds to cover required fee' });
+                continue;
+              }
+              amountMicros = newAmountMicros;
+              take = amountMicros / 1_000_000;
+              this.logger.log(`Reduced amount for ${chain} to ${take} USDC to fit new fee`);
+            }
+
+            try {
+              const retryRes = await this.circleGatewayService.transferToArc({
+                sourceChain: chain as Exclude<WalletChain, 'ARC-TESTNET'>,
+                sourceWalletId: walletId,
+                destinationWalletId: arcWallet.walletId,
+                recipientAddress: arcWallet.address,
+                amount: amountMicros / 1_000_000,
+                maxFee: String(requiredMicros),
+              });
+              const sent = amountMicros / 1_000_000;
+              transfers.push({ sourceChain: chain, amount: sent, transferId: retryRes.transferId, attestation: retryRes.attestation, mintTxId: retryRes.mintTxId, status: 'success' });
+              remaining -= sent;
+              this.logger.log(`Transferred ${sent} USDC from ${chain} after retry. Remaining: ${remaining} USDC`);
+              continue;
+            } catch (retryErr: any) {
+              this.logger.error(`Retry failed for ${chain}:`, retryErr?.message ?? retryErr);
+              transfers.push({ sourceChain: chain, amount: take, status: 'failed', error: retryErr?.message ?? String(retryErr) });
+              continue;
+            }
+          }
+        }
+
+        // If no retry path found, record failure
+        transfers.push({ sourceChain: chain, amount: take, status: 'failed', error: err?.message ?? String(err) });
+      }
+    }
+
+    const totalTransferred = Number(dto.amount) - remaining;
+    if (remaining > 1e-6) {
+      throw new BadRequestException(`Insufficient unified USDC across chains. Requested=${dto.amount} Available=${totalTransferred}`);
+    }
 
     return {
       success: true,
-      message: `Transferred ${dto.amount} USDC from ${dto.sourceChain} to ARC-TESTNET`,
+      message: `Transferred ${totalTransferred} USDC to ARC-TESTNET using multi-chain sources`,
       userId: dto.userId,
-      sourceChain: dto.sourceChain,
+      sourceChain: 'MULTI',
       destinationChain: 'ARC-TESTNET',
-      amount: dto.amount,
-      sourceAddress: sourceWallet.address,
+      amount: totalTransferred,
       destinationAddress: arcWallet.address,
-      attestation: result.attestation,
-      mintTxId: result.mintTxId,
+      transfers,
     };
   }
 
@@ -267,7 +420,6 @@ export class PaymentsService {
     }
 
     // 4) Ensure allowance
-    //    先查 allowance，足夠就跳過 approve（MVP 非常值得做，少一筆 tx = 少一個失敗點）
     const allowanceE6 = BigInt(
       await this.arcContractService.getUSDCAllowance(arcAddress),
     );
@@ -298,7 +450,6 @@ export class PaymentsService {
     }
 
     // 5) Subscribe
-    //    ✅ 建議直接用 actualAmountE6 呼叫 subscribe（避免「非整數倍」帶來 debug 困擾）
     const subscribeRes = await this.arcContractService.subscribe(
       arcWalletId,
       dto.productId,

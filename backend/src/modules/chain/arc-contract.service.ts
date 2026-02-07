@@ -90,7 +90,6 @@ export class ArcContractService {
 
   /**
    * Wait for Circle transaction to reach terminal state.
-   * ✅ MVP 版：以 Circle state 為準，不強制鏈上 receipt（Arc testnet RPC 可能查不到 tx）
    */
   private async waitForCircleTransaction(txId: string, maxAttempts = 60): Promise<string | null> {
     const terminal = new Set(['COMPLETE', 'CONFIRMED', 'FAILED', 'DENIED', 'CANCELLED']);

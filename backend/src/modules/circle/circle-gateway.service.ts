@@ -71,7 +71,7 @@ export class CircleGatewayService {
     'ARC-TESTNET': { domain: 26, name: 'Arc Testnet' },
   };
 
-  // ✅ USDC contract addresses (ERC-20 USDC on each chain)
+  // USDC contract addresses (ERC-20 USDC on each chain)
   // Arc Testnet USDC is the ERC-20 interface for native USDC (6 decimals)
   private readonly usdcAddresses: Record<WalletChain, string> = {
     'ETH-SEPOLIA': '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
@@ -522,7 +522,7 @@ export class CircleGatewayService {
 
     await this.waitForTxCompletion(mintTxId, 'Gateway mint (Arc)');
 
-    this.logger.log('✅ Cross-chain transfer completed successfully!');
+    this.logger.log('Cross-chain transfer completed successfully!');
 
     return {
       attestation: attResp.attestation,
@@ -744,7 +744,7 @@ export class CircleGatewayService {
         });
 
         totalTransferred += amountToTransfer;
-        this.logger.log(`✅ Success: ${amountToTransfer.toFixed(6)} USDC`);
+        this.logger.log(`Success: ${amountToTransfer.toFixed(6)} USDC`);
       } catch (error: any) {
         transfers.push({
           sourceChain,
