@@ -112,6 +112,7 @@ contract DividendDistributorTest is Test {
         uint256 expectedAcc = (dividendAmount * 1e18) / 30;
         assertEq(distributor.accDividendPerShare(productId), expectedAcc);
         assertEq(usdc.balanceOf(address(distributor)), dividendAmount);
+        assertEq(distributor.dividendPoolE6(productId), dividendAmount);
     }
 
     function testDeclareDividendOnlyIssuer() public {
@@ -153,6 +154,7 @@ contract DividendDistributorTest is Test {
         // investor2 has 20 units (66.67%) -> should get 200 USDC
         assertEq(distributor.pending(productId, investor1), 100_000_000);
         assertEq(distributor.pending(productId, investor2), 200_000_000);
+        assertEq(distributor.dividendPoolE6(productId), dividendAmount);
     }
 
     /// @notice Test claiming dividends
@@ -179,6 +181,7 @@ contract DividendDistributorTest is Test {
         assertEq(claimed, 100_000_000);
         assertEq(usdc.balanceOf(investor1), balanceBefore + 100_000_000);
         assertEq(distributor.pending(productId, investor1), 0);
+        assertEq(distributor.dividendPoolE6(productId), 200_000_000);
     }
 
     function testClaimNoUnits() public {
@@ -376,6 +379,7 @@ contract DividendDistributorTest is Test {
         // Verify withdrawal
         assertEq(usdc.balanceOf(issuer), issuerBalanceBefore + withdrawAmount);
         assertEq(usdc.balanceOf(address(distributor)), 100_000_000); // 200 - 100 withdrawn
+        assertEq(distributor.dividendPoolE6(productId), 100_000_000);
     }
 
     /// @notice Test only issuer can withdraw unclaimed dividends
@@ -407,7 +411,7 @@ contract DividendDistributorTest is Test {
         
         // Try to withdraw more than available
         vm.prank(issuer);
-        vm.expectRevert("insufficient balance");
+        vm.expectRevert("insufficient product pool");
         distributor.withdrawUnclaimedDividend(productId, 500_000_000);
     }
 
@@ -426,10 +430,11 @@ contract DividendDistributorTest is Test {
         
         // No unclaimed dividends left
         assertEq(usdc.balanceOf(address(distributor)), 0);
-        
+        assertEq(distributor.dividendPoolE6(productId), 0);
+
         // Issuer tries to withdraw
         vm.prank(issuer);
-        vm.expectRevert("insufficient balance");
+        vm.expectRevert("insufficient product pool");
         distributor.withdrawUnclaimedDividend(productId, 1);
     }
 }

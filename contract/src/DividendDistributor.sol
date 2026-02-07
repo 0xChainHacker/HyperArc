@@ -21,6 +21,9 @@ contract DividendDistributor is ReentrancyGuard {
     // productId => accDividendPerShare (scaled by 1e18)
     mapping(uint256 => uint256) public accDividendPerShare;
 
+    // productId => available dividend pool in USDC (6 decimals)
+    mapping(uint256 => uint256) public dividendPoolE6;
+
     // productId => user => rewardDebt (scaled)
     mapping(uint256 => mapping(address => uint256)) public rewardDebt;
 
@@ -51,7 +54,8 @@ contract DividendDistributor is ReentrancyGuard {
         // pull USDC into this contract as dividend pool
         usdc.safeTransferFrom(msg.sender, address(this), amountE6);
 
-        // update accumulator (scaled by 1e18)
+        // update product pool and accumulator (scaled by 1e18)
+        dividendPoolE6[productId] += amountE6;
         accDividendPerShare[productId] += (amountE6 * 1e18) / total;
 
         emit DividendDeclared(productId, msg.sender, amountE6, accDividendPerShare[productId]);
@@ -85,6 +89,10 @@ contract DividendDistributor is ReentrancyGuard {
         // update debt to current accrued amount
         rewardDebt[productId][msg.sender] = accrued;
 
+        // ensure product pool has enough funds and deduct
+        require(dividendPoolE6[productId] >= claimedE6, "insufficient product pool");
+        dividendPoolE6[productId] -= claimedE6;
+
         usdc.safeTransfer(msg.sender, claimedE6);
         emit Claimed(productId, msg.sender, claimedE6);
     }
@@ -102,8 +110,10 @@ contract DividendDistributor is ReentrancyGuard {
     /// @param amountE6 Amount of USDC to withdraw (6 decimals)
     function withdrawUnclaimedDividend(uint256 productId, uint256 amountE6) external onlyIssuer(productId) nonReentrant {
         require(amountE6 > 0, "amount=0");
-        require(usdc.balanceOf(address(this)) >= amountE6, "insufficient balance");
+        require(dividendPoolE6[productId] >= amountE6, "insufficient product pool");
 
+        // deduct from product pool and transfer
+        dividendPoolE6[productId] -= amountE6;
         usdc.safeTransfer(msg.sender, amountE6);
         emit UnclaimedDividendWithdrawn(productId, msg.sender, amountE6);
     }}
