@@ -442,7 +442,7 @@ contract EconomicInterestLedgerTest is Test {
         
         // Try to withdraw more than available
         vm.prank(issuer);
-        vm.expectRevert("insufficient balance");
+        vm.expectRevert("insufficient product pool");
         ledger.withdrawSubscriptionFunds(productId, 200_000_000);
     }
 
@@ -532,7 +532,7 @@ contract EconomicInterestLedgerTest is Test {
         
         // Try to refund when no balance left
         vm.prank(issuer);
-        vm.expectRevert("insufficient balance");
+        vm.expectRevert("insufficient product pool");
         ledger.refund(productId, investor1, 5);
     }
 

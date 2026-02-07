@@ -29,6 +29,9 @@ contract EconomicInterestLedger is Ownable {
     // productId => total units
     mapping(uint256 => uint256) private _totalUnits;
 
+    // productId => subscription pool in USDC (6 decimals)
+    mapping(uint256 => uint256) public subscriptionPoolE6;
+
     event ProductCreated(uint256 indexed productId, address indexed issuer, uint256 priceE6, string metadataURI);
     event ProductStatusUpdated(uint256 indexed productId, bool active, uint256 priceE6);
     event ProductFrozen(uint256 indexed productId, bool frozen);
@@ -103,12 +106,15 @@ contract EconomicInterestLedger is Ownable {
         require(units > 0, "too small");
 
         // pull USDC from investor
-        usdc.safeTransferFrom(msg.sender, address(this), units * p.priceE6);
+        uint256 pullAmount = units * p.priceE6;
+        usdc.safeTransferFrom(msg.sender, address(this), pullAmount);
 
+        // update holdings and per-product subscription pool
         _holdings[productId][msg.sender] += units;
         _totalUnits[productId] += units;
+        subscriptionPoolE6[productId] += pullAmount;
 
-        emit Subscribed(productId, msg.sender, units * p.priceE6, units);
+        emit Subscribed(productId, msg.sender, pullAmount, units);
     }
 
     /// @notice Issuer withdraws subscription funds from treasury.
@@ -117,8 +123,10 @@ contract EconomicInterestLedger is Ownable {
     function withdrawSubscriptionFunds(uint256 productId, uint256 amountE6) external onlyIssuer(productId) {
         require(amountE6 > 0, "amount=0");
         require(!products[productId].frozen, "product frozen");
-        require(usdc.balanceOf(address(this)) >= amountE6, "insufficient balance");
+        require(subscriptionPoolE6[productId] >= amountE6, "insufficient product pool");
 
+        // deduct from product pool and transfer
+        subscriptionPoolE6[productId] -= amountE6;
         usdc.safeTransfer(msg.sender, amountE6);
         emit SubscriptionFundsWithdrawn(productId, msg.sender, amountE6);
     }
@@ -133,13 +141,14 @@ contract EconomicInterestLedger is Ownable {
 
         Product memory p = products[productId];
         uint256 refundAmountE6 = units * p.priceE6;
-        require(usdc.balanceOf(address(this)) >= refundAmountE6, "insufficient balance");
+        require(subscriptionPoolE6[productId] >= refundAmountE6, "insufficient product pool");
 
         // Burn units
         _holdings[productId][investor] -= units;
         _totalUnits[productId] -= units;
 
-        // Transfer USDC back to investor
+        // deduct from product pool and transfer USDC back to investor
+        subscriptionPoolE6[productId] -= refundAmountE6;
         usdc.safeTransfer(investor, refundAmountE6);
         emit Refunded(productId, investor, units, refundAmountE6);
     }
