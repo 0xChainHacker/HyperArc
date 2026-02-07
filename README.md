@@ -40,6 +40,13 @@ Arc Layer-1 (USDC Settlement)
 
 ---
 
+## Deployed Contracts
+
+- **[EconomicInterestLedger](https://testnet.arcscan.app/address/0x857AC799F4AaD17E5AFe4DCf41561191F219Fc87)**: `0x857AC799F4AaD17E5AFe4DCf41561191F219Fc87`
+- [DividendDistributor](https://testnet.arcscan.app/address/0x81e9367719f85e701527e3e406fdde35d5d1d48d): `0x81e9367719f85e701527e3e406fdde35d5d1d48d`
+
+---
+
 ## Tech Stack
 
 ### Frontend
