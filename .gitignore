@@ -151,3 +151,4 @@ lib/
 .env.*.local
 
 .DS_Store
+.vercel/
