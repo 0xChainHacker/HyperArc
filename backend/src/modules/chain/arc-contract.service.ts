@@ -194,12 +194,23 @@ export class ArcContractService {
       if (product.issuer === ethers.ZeroAddress) {
         throw new Error('Product does not exist');
       }
+      // Read per-product subscription pool if available in ABI
+      let subscriptionPool = '0';
+      try {
+        const pool = await this.ledgerContract.subscriptionPoolE6(productId);
+        subscriptionPool = pool.toString();
+      } catch (err) {
+        // ABI might not include the getter; ignore if missing
+        this.logger.debug(`subscriptionPoolE6 not available for product ${productId}`);
+      }
+
       return {
         issuer: product.issuer,
         active: product.active,
         frozen: product.frozen,
         priceE6: product.priceE6.toString(),
         metadataURI: product.metadataURI,
+        subscriptionPoolE6: subscriptionPool,
       };
     } catch (error) {
       this.logger.error(`Failed to get product ${productId}`, error.message);

@@ -9,6 +9,7 @@ export interface Product {
   issuerAddress: string;
   priceE6: string;
   price: number;
+  subscriptionPoolE6?: string;
   metadataURI: string;
   contractAddress?: string;
   active: boolean;
@@ -458,6 +459,7 @@ function normalizeProduct(raw: any): Product {
     issuerAddress,
     priceE6,
     price,
+    subscriptionPoolE6: raw.subscriptionPoolE6 ?? raw.subscription_pool_e6 ?? raw.subscription_pool ?? undefined,
     metadataURI: raw.metadataURI ?? raw.metadataUri ?? raw.metadata_uri ?? '',
     contractAddress: raw.contractAddress ?? raw.contract_address,
     active: raw.active ?? false,

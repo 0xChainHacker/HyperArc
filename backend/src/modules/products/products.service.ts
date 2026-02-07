@@ -12,6 +12,7 @@ export interface Product {
   active: boolean;
   frozen?: boolean;
   priceE6: string;
+  subscriptionPoolE6?: string;
   metadataURI: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
@@ -246,7 +247,30 @@ export class ProductsService {
    * Get all approved products
    */
   async listProducts(): Promise<Product[]> {
-    return this.products.filter((p) => p.status === 'approved');
+    const approved = this.products.filter((p) => p.status === 'approved');
+
+    // Merge on-chain data (including subscriptionPoolE6) when available
+    const merged = await Promise.all(
+      approved.map(async (p) => {
+        try {
+          const onChain = await this.arcContractService.getProduct(p.productId);
+          return {
+            ...p,
+            issuer: onChain.issuer,
+            active: onChain.active,
+            frozen: onChain.frozen,
+            priceE6: onChain.priceE6,
+            metadataURI: onChain.metadataURI || p.metadataURI,
+            subscriptionPoolE6: onChain.subscriptionPoolE6 ?? p.subscriptionPoolE6,
+          } as Product;
+        } catch (e) {
+          // If on-chain fetch fails, return local product
+          return p;
+        }
+      }),
+    );
+
+    return merged;
   }
 
   /**
@@ -272,6 +296,7 @@ export class ProductsService {
         active: onChainProduct.active,
         frozen: onChainProduct.frozen,
         priceE6: onChainProduct.priceE6,
+        subscriptionPoolE6: onChainProduct.subscriptionPoolE6,
         metadataURI: onChainProduct.metadataURI || localProduct?.metadataURI || '',
         status: localProduct?.status || 'approved',
         createdAt: localProduct?.createdAt || new Date().toISOString(),

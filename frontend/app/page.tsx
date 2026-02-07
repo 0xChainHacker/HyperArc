@@ -1171,7 +1171,17 @@ export default function Home() {
                               <div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Available to Withdraw</p>
                                 <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                  ${((Number(productTotalUnits[product.id] ?? product.totalUnits ?? 0) * Number(product.price ?? 0))).toFixed(2)}
+                                  ${(
+                                    (() => {
+                                      // Prefer on-chain subscriptionPoolE6 if available
+                                      if (product.subscriptionPoolE6) {
+                                        const n = Number(product.subscriptionPoolE6);
+                                        if (Number.isFinite(n)) return (n / 1_000_000);
+                                      }
+                                      // Fallback: estimate from sold units * price
+                                      return (Number(productTotalUnits[product.id] ?? product.totalUnits ?? 0) * Number(product.price ?? 0));
+                                    })()
+                                  ).toFixed(2)}
                                 </p>
                               </div>
                             </div>
