@@ -1039,7 +1039,16 @@ export default function Home() {
                                           ? (address.address ?? Object.values(address).find((v: any) => typeof v === 'string') ?? '')
                                           : '');
                                     const usdcEntries = chainUSDCBalances[blockchain] || [];
-                                    const usdcDisplay = usdcEntries.length > 0 ? usdcEntries.map((u:any) => u.amountFormatted).join(', ') : '0.00';
+                                    const usdcDisplay = usdcEntries.length > 0
+                                      ? usdcEntries.map((u: any) => {
+                                          const symbol = (u?.token?.symbol || '').toLowerCase();
+                                          // Normalize USDC display to 6 decimals for UI clarity
+                                          if (symbol.includes('usdc')) {
+                                            return Number(u.amount).toFixed(6);
+                                          }
+                                          return u.amountFormatted;
+                                        }).join(', ')
+                                      : '0.00';
                                     return (
                                       <div
                                         key={blockchain}

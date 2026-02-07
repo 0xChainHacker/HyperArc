@@ -138,10 +138,13 @@ export class UsersService implements OnModuleInit {
     
     // Convert addresses to new format with walletId per chain
     const circleWallet: { [blockchain: string]: ChainWallet } = {};
-    for (const [blockchain, address] of Object.entries(walletData.addresses)) {
+    for (const [blockchain, addrObj] of Object.entries(walletData.addresses)) {
+      // addrObj may be { walletId, address }
+      const walletId = (addrObj as any)?.walletId ?? walletData.id;
+      const address = (addrObj as any)?.address ?? addrObj as unknown as string;
       circleWallet[blockchain] = {
-        walletId: walletData.id,
-        address: address as string,
+        walletId,
+        address,
       };
     }
     
@@ -523,26 +526,37 @@ export class UsersService implements OnModuleInit {
     let totalUSDC = 0;
     let allTokenBalances: any[] = [];
     const walletIds = new Set<string>();
-    
+    const processedWalletIds = new Set<string>();
+
     for (const [blockchain, chainWallet] of Object.entries(userWallet.circleWallet) as [string, ChainWallet][]) {
       try {
-        this.logger.log(`Querying balance for ${blockchain} with walletId: ${chainWallet.walletId}`);
-        walletIds.add(chainWallet.walletId);
-        
-        const tokenBalances = await this.circleWalletService.getWalletBalance(chainWallet.walletId);
-        
+        const walletId = chainWallet.walletId;
+        this.logger.log(`Querying balance for ${blockchain} with walletId: ${walletId}`);
+
+        // Some Circle wallet sets may reference the same walletId under multiple chain keys
+        // (especially EOA wallets). Avoid querying the same walletId multiple times because
+        // that would produce duplicate token balance entries in the aggregation.
+        if (processedWalletIds.has(walletId)) {
+          this.logger.log(`Skipping already-processed walletId=${walletId} for chain=${blockchain}`);
+          continue;
+        }
+        processedWalletIds.add(walletId);
+        walletIds.add(walletId);
+
+        const tokenBalances = await this.circleWalletService.getWalletBalance(walletId);
+
         if (Array.isArray(tokenBalances) && tokenBalances.length > 0) {
           allTokenBalances = allTokenBalances.concat(tokenBalances);
-          
+
           for (const tokenBalance of tokenBalances) {
             const tokenBlockchain = tokenBalance.token?.blockchain || blockchain;
             const symbol = tokenBalance.token?.symbol || '';
             const amount = Number(tokenBalance.amount || 0);
-            
+
             if (!balancesByChain[tokenBlockchain]) {
               balancesByChain[tokenBlockchain] = [];
             }
-            
+
             balancesByChain[tokenBlockchain].push({
               token: {
                 name: tokenBalance.token?.name,
@@ -555,7 +569,7 @@ export class UsersService implements OnModuleInit {
               amountFormatted: amount.toFixed(tokenBalance.token?.decimals || 6),
               updateDate: tokenBalance.updateDate,
             });
-            
+
             // Aggregate USDC for total
             const isUSDC = this.isUSDCToken(symbol);
             if (isUSDC) {

@@ -108,7 +108,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["auth", "verify"]
             },
-            "description": "Verify SIWE signature and obtain JWT token.\n\n**Auto-creates user account**: If this is the first time the wallet address signs in, the backend will automatically:\n1. Create a new user account with userId = `user-{first8chars}`\n2. Create Circle wallets on: ARC-TESTNET, ARB-SEPOLIA, MATIC-AMOY, ETH-SEPOLIA\n3. Link the MetaMask address as an external wallet\n4. Return JWT token for immediate use\n\n**For existing users**: Returns JWT token linked to existing account.\n\n**Steps to use**:\n1. Call GET /auth/nonce to get a nonce\n2. Use frontend (siwe library) to create SIWE message\n3. Sign the message with MetaMask\n4. Submit the complete message and signature to this endpoint\n\n**Example message format**:\n```\nlocalhost:3001 wants you to sign in with your Ethereum account:\n0x1234567890123456789012345678901234567890\n\nSign in with Ethereum to HyperArc\n\nURI: http://localhost:3001\nVersion: 1\nChain ID: 5042002\nNonce: <nonce-from-step-1>\nIssued At: <current-ISO-timestamp>\n```\n\n**Response**:\n```json\n{\n  \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"userId\": \"user-12345678\",\n  \"role\": \"investor\",\n  \"address\": \"0x1234567890123456789012345678901234567890\"\n}\n```"
+            "description": "Verify SIWE signature and obtain JWT token.\n\nImportant: the backend no longer auto-creates user accounts. If the signing address is not linked to an existing HyperArc account, this endpoint returns 404 Not Found with guidance to explicitly create a wallet via POST /wallets/:userId?role=investor|issuer&externalWallets=<address>.\n\n**For existing users**: Returns JWT token linked to the account.\n\n**Frontend flow (typical)**:\n1. Call GET /auth/nonce to get a nonce\n2. Use frontend (siwe library) to create SIWE message\n3. Sign the message with MetaMask\n4. Submit the message and signature to this endpoint\n   - If 200: you receive `accessToken`, `userId`, `role` and can continue.\n   - If 404: call POST /wallets/:userId?role=...&blockchains=...&externalWallets=<address> to create the account, then reconnect/sign again to obtain JWT.\n\n**Example message format**:\n```\nlocalhost:3001 wants you to sign in with your Ethereum account:\n0x1234567890123456789012345678901234567890\n\nSign in with Ethereum to HyperArc\n\nURI: http://localhost:3001\nVersion: 1\nChain ID: 5042002\nNonce: <nonce-from-step-1>\nIssued At: <current-ISO-timestamp>\n```\n\n**Response (success)**:\n```json\n{\n  \"accessToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"userId\": \"user-12345678\",\n  \"role\": \"investor\",\n  \"address\": \"0x1234567890123456789012345678901234567890\"\n}\n```"
           },
           "response": []
         },
@@ -170,7 +170,7 @@
           "response": []
         }
       ],
-      "description": "Ethereum wallet authentication based on EIP-4361 (SIWE). First-time login automatically creates user account and Circle wallets on 4 blockchains (ARC-TESTNET, ARB-SEPOLIA, MATIC-AMOY, ETH-SEPOLIA)."
+      "description": "Ethereum wallet authentication based on EIP-4361 (SIWE). The backend no longer auto-creates accounts on first sign-in. If an address is not linked, `/auth/verify` returns 404 and the frontend should create a wallet via POST /wallets/:userId?role=investor|issuer&externalWallets=<address>."
     },
     {
       "name": "1. Wallet Management",
@@ -186,7 +186,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&blockchains=ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY,ETH-SEPOLIA",
+              "raw": "{{baseUrl}}/wallets/{{userId}}?role=investor&blockchains=ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY,ETH-SEPOLIA&externalWallets=0x123...",
               "host": ["{{baseUrl}}"],
               "path": ["wallets", "{{userId}}"],
               "query": [
@@ -199,10 +199,15 @@
                   "key": "blockchains",
                   "value": "ARC-TESTNET,ARB-SEPOLIA,MATIC-AMOY,ETH-SEPOLIA",
                   "description": "Comma-separated list of blockchains (default: ARC-TESTNET)"
+                },
+                {
+                  "key": "externalWallets",
+                  "value": "0x123...",
+                  "description": "Comma-separated external wallet addresses to link (e.g., MetaMask)"
                 }
               ]
             },
-            "description": "Creates or retrieves wallet with addresses on multiple blockchains.\n\n**Note**: SIWE login automatically creates wallets on all 4 chains (ARC-TESTNET, ARB-SEPOLIA, MATIC-AMOY, ETH-SEPOLIA). Manual creation is only needed for:\n- Issuer wallets\n- Admin wallets\n- Adding additional blockchains to existing wallets\n\n**Response includes**:\n- walletId (Circle wallet ID)\n- addresses for each blockchain\n- wallet state (LIVE/FROZEN)"
+            "description": "Creates or retrieves wallet with addresses on multiple blockchains.\n\nImportant: the backend no longer auto-creates user accounts on SIWE verification. If the signing address is not linked to an existing HyperArc account, use POST /wallets/:userId?role=...&blockchains=...&externalWallets=<address> to create the account and link your external wallet.\n\nBehavior:\n- If no wallet exists for the given user+role: a new Circle wallet will be created and addresses for the requested blockchains will be returned. If `externalWallets` is provided, those addresses will be linked to the created wallet.\n- If a wallet already exists for the given user+role: this endpoint returns the existing wallet and will link any provided `externalWallets` to it, but it will NOT automatically add missing blockchains. To add blockchains to an existing wallet, call POST /wallets/:userId/blockchains?role=...&blockchains=...\n\n**Response includes**:\n- walletId (Circle wallet ID)\n- addresses for each blockchain\n- wallet state (LIVE/FROZEN)"
           }
         },
         {

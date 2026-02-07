@@ -4,9 +4,10 @@ import { initiateDeveloperControlledWalletsClient, Blockchain, EvmBlockchain } f
 import { CircleWallet, CircleTransaction } from './circle.types';
 
 export interface WalletWithAddresses {
-  id: string;
+  id: string; // first wallet id returned (may be one of the chain-specific wallet ids)
   blockchains: string[];
-  addresses: { [blockchain: string]: string };
+  // Per-chain mapping to both walletId and address
+  addresses: { [blockchain: string]: { walletId: string; address: string } };
   state: 'LIVE' | 'FROZEN';
 }
 
@@ -123,20 +124,21 @@ export class CircleWalletService {
       
       // Build address mapping from all returned wallets
       // Circle SDK may return multiple wallet objects (one per blockchain)
-      const addresses: { [blockchain: string]: string } = {};
+      const addresses: { [blockchain: string]: { walletId: string; address: string } } = {};
       const walletId = createdWallets[0].id || '';
       let state: 'LIVE' | 'FROZEN' = 'LIVE';
-      
+
       for (const wallet of createdWallets) {
         if (wallet.blockchain && wallet.address) {
-          addresses[wallet.blockchain] = wallet.address;
+          addresses[wallet.blockchain] = { walletId: wallet.id || '', address: wallet.address };
           state = (wallet.state as 'LIVE' | 'FROZEN') || state;
         }
       }
-      
-      // If Circle returns single wallet object for all blockchains
+
+      // If Circle returns a single wallet object for a single requested blockchain,
+      // ensure the mapping exists for that blockchain.
       if (createdWallets.length === 1 && createdWallets[0].address && blockchains.length === 1) {
-        addresses[blockchains[0]] = createdWallets[0].address;
+        addresses[blockchains[0]] = { walletId: createdWallets[0].id || '', address: createdWallets[0].address };
       }
       
       this.logger.log(
