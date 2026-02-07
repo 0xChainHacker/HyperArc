@@ -48,6 +48,9 @@ export default function Home() {
   const ENS_CACHE_KEY = 'ensName';
 
   const [circleWalletAddress, setCircleWalletAddress] = useState<string | null>(null);
+  const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>({});
+  const [depositStatus, setDepositStatus] = useState<Record<string, 'idle' | 'loading' | 'success' | 'error'>>({});
+  const [depositMessages, setDepositMessages] = useState<Record<string, string>>({});
   const [circleWalletInfo, setCircleWalletInfo] = useState<any>(null);
   const [chainUSDCBalances, setChainUSDCBalances] = useState<Record<string, any[]>>({});
   const [unifiedUSDCBalance, setUnifiedUSDCBalance] = useState<number | null>(null);
@@ -258,6 +261,39 @@ export default function Home() {
       console.error('Error loading data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGatewayDeposit = async (sourceChain: string) => {
+    if (!userId) {
+      alert('Please connect your wallet first');
+      return;
+    }
+    const raw = depositAmounts[sourceChain];
+    const amount = Number(raw);
+    if (!raw || Number.isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid deposit amount');
+      return;
+    }
+
+    console.log('Starting gateway deposit', { userId, sourceChain, amount });
+    setDepositStatus((s) => ({ ...s, [sourceChain]: 'loading' }));
+    setDepositMessages((s) => ({ ...s, [sourceChain]: '' }));
+
+    try {
+      const data = await api.gatewayDeposit(userId, sourceChain, amount);
+      console.log('gatewayDeposit result:', data);
+      const msg = data?.txId ? `Tx: ${data.txId}` : 'Submitted';
+      setDepositStatus((s) => ({ ...s, [sourceChain]: 'success' }));
+      setDepositMessages((s) => ({ ...s, [sourceChain]: msg }));
+      setDepositAmounts((s) => ({ ...s, [sourceChain]: '' }));
+      await loadData();
+    } catch (err) {
+      console.error('gatewayDeposit error:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setDepositStatus((s) => ({ ...s, [sourceChain]: 'error' }));
+      setDepositMessages((s) => ({ ...s, [sourceChain]: message }));
+      alert(message);
     }
   };
 
@@ -798,9 +834,10 @@ export default function Home() {
                                   return (
                                     <div
                                       key={blockchain}
-                                      className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg"
+                                      className="flex flex-col p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg"
                                     >
-                                      <div className="flex items-center gap-3">
+                                      <div className="flex items-center w-full">
+                                      <div className="flex items-center gap-3 flex-1">
                                         <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
                                           <span className="text-white text-xs font-bold">{blockchain.split('-')[0].substring(0, 2)}</span>
                                         </div>
@@ -812,18 +849,49 @@ export default function Home() {
                                           <p className="text-xs text-slate-500 dark:text-slate-400">USDC: <span className="font-semibold">{usdcDisplay}</span></p>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() => {
-                                          if (actualAddress) {
-                                            navigator.clipboard.writeText(actualAddress);
-                                            alert('Address copied to clipboard!');
-                                          }
-                                        }}
-                                        disabled={!actualAddress}
-                                        className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                      >
-                                        Copy
-                                      </button>
+                                      <div className="flex items-center gap-2 justify-end">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={depositAmounts[blockchain] ?? ''}
+                                          onChange={(e) => setDepositAmounts((s) => ({ ...s, [blockchain]: e.target.value }))}
+                                          placeholder="Amount"
+                                          className="w-28 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100"
+                                        />
+                                        <button
+                                          onClick={() => handleGatewayDeposit(blockchain)}
+                                          disabled={depositStatus[blockchain] === 'loading'}
+                                          className="px-3 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                          {depositStatus[blockchain] === 'loading' ? (
+                                            <span className="flex items-center gap-2"><span className="animate-spin inline-block w-3 h-3 rounded-full border-b-2 border-current"/>Processing</span>
+                                          ) : (
+                                            'Deposit'
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (actualAddress) {
+                                              navigator.clipboard.writeText(actualAddress);
+                                              alert('Address copied to clipboard!');
+                                            }
+                                          }}
+                                          disabled={!actualAddress}
+                                          className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                          Copy
+                                        </button>
+                                      </div>
+                                      </div>
+                                      <div className="w-full mt-2 text-right">
+                                        {depositStatus[blockchain] === 'success' && (
+                                          <p className="text-xs text-green-700 dark:text-green-300 inline">Completed: {depositMessages[blockchain]}</p>
+                                        )}
+                                        {depositStatus[blockchain] === 'error' && (
+                                          <p className="text-xs text-red-700 dark:text-red-300 inline">Error: {depositMessages[blockchain]}</p>
+                                        )}
+                                      </div>
                                     </div>
                                   );
                                 })}

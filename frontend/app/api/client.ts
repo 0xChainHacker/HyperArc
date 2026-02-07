@@ -215,6 +215,34 @@ class HyperArcAPI {
     return response.json();
   }
 
+  async gatewayDeposit(userId: string, sourceChain: string, amount: number | string): Promise<any> {
+    const url = `${this.baseUrl}/gateway/deposit`;
+    const payload = { userId, sourceChain, amount };
+    console.log('[api] gatewayDeposit ->', url, payload);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('[api] gatewayDeposit response status:', response.status);
+
+    const handled = await this.handleResponse(response);
+
+    const text = await handled.text();
+    try {
+      const data = JSON.parse(text);
+      console.log('[api] gatewayDeposit response json:', data);
+      if (!response.ok) throw new Error(data?.message || 'Failed to deposit to gateway');
+      return data;
+    } catch (e) {
+      console.log('[api] gatewayDeposit response text:', text);
+      if (!response.ok) throw new Error(text || 'Failed to deposit to gateway');
+      return text;
+    }
+  }
+
   async getGatewayTransactionStatus(txId: string): Promise<any> {
     const response = await this.handleResponse(await fetch(`${this.baseUrl}/gateway/transactions/${txId}`));
     if (!response.ok) throw new Error('Failed to get gateway transaction status');
