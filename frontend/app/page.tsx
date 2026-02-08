@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ButtonHTMLAttributes, type MouseEvent } from 'react';
 import Link from 'next/link';
 import { Space_Grotesk } from 'next/font/google';
-
-const spaceGrotesk = Space_Grotesk({ subsets: ['latin'] });
 import { api, Product, PortfolioHolding } from './api/client';
 import { SiweMessage } from 'siwe';
 import { BrowserProvider, getAddress, getDefaultProvider } from 'ethers';
+
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'] });
 
 type UserRole = 'investor' | 'issuer';
 type InvestorTab = 'products' | 'portfolio';
@@ -22,6 +22,47 @@ declare global {
       removeListener?: (event: string, handler: (...args: any[]) => void) => void;
     };
   }
+}
+
+type PendingButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  pendingLabel?: string;
+  pending?: boolean;
+};
+
+function PendingButton({
+  onClick,
+  pendingLabel = 'Pending...',
+  pending,
+  disabled,
+  children,
+  ...props
+}: PendingButtonProps) {
+  const [internalPending, setInternalPending] = useState(false);
+  const isPending = pending ?? internalPending;
+
+  const handleClick = async (e: MouseEvent<HTMLButtonElement>) => {
+    if (disabled || isPending) {
+      e.preventDefault();
+      return;
+    }
+    setInternalPending(true);
+    try {
+      await onClick?.(e);
+    } finally {
+      setInternalPending(false);
+    }
+  };
+
+  return (
+    <button
+      {...props}
+      onClick={onClick ? handleClick : undefined}
+      disabled={disabled || isPending}
+      aria-busy={isPending}
+    >
+      {isPending ? pendingLabel : children}
+    </button>
+  );
 }
 
 export default function Home() {
@@ -58,6 +99,7 @@ export default function Home() {
   const [depositMessages, setDepositMessages] = useState<Record<string, string>>({});
   const [subscribingStatus, setSubscribingStatus] = useState<Record<number, 'idle' | 'loading' | 'success' | 'error'>>({});
   const [subscribeMessages, setSubscribeMessages] = useState<Record<number, string>>({});
+  const [creatingProduct, setCreatingProduct] = useState(false);
   const [circleWalletInfo, setCircleWalletInfo] = useState<any>(null);
   const [chainUSDCBalances, setChainUSDCBalances] = useState<Record<string, any[]>>({});
   const [unifiedUSDCBalance, setUnifiedUSDCBalance] = useState<number | null>(null);
@@ -432,6 +474,8 @@ export default function Home() {
       alert('Please connect your wallet first');
       return;
     }
+    if (creatingProduct) return;
+    setCreatingProduct(true);
     try {
       const priceE6 = (parseFloat(newProduct.price) * 1_000_000).toString();
 
@@ -466,6 +510,8 @@ export default function Home() {
       setIssuerTab('pending');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to create product');
+    } finally {
+      setCreatingProduct(false);
     }
   };
 
@@ -732,7 +778,7 @@ export default function Home() {
             <div className="flex items-center gap-6">
               {/* Role Switch */}
               <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                <button
+                <PendingButton
                   onClick={() => setUserRole('investor')}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                     userRole === 'investor'
@@ -741,8 +787,8 @@ export default function Home() {
                   }`}
                 >
                   Investor
-                </button>
-                <button
+                </PendingButton>
+                <PendingButton
                   onClick={() => setUserRole('issuer')}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                     userRole === 'issuer'
@@ -751,7 +797,7 @@ export default function Home() {
                   } ${!authRole || authRole !== 'issuer' ? 'opacity-90' : ''}`}
                 >
                   SPV/Issuer {!authRole || authRole !== 'issuer' ? '🔒' : ''}
-                </button>
+                </PendingButton>
               </div>
 
               <div className="flex items-center gap-3">
@@ -776,20 +822,20 @@ export default function Home() {
               </div>
 
               {walletConnected ? (
-                <button
+                <PendingButton
                   onClick={handleDisconnectWallet}
                   className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium"
                 >
                   Disconnect
-                </button>
+                </PendingButton>
               ) : (
-                <button
+                <PendingButton
                   onClick={handleConnectWallet}
                   disabled={connectingWallet}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium"
                 >
                   {connectingWallet ? 'Connecting...' : 'Connect Wallet'}
-                </button>
+                </PendingButton>
               )}
             </div>
           </div>
@@ -804,18 +850,18 @@ export default function Home() {
             <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">We couldn't find an existing HyperArc account tied to this wallet. Please choose whether you'd like to register as an Investor or an Issuer (SPV).</p>
             <div className="space-y-4 mb-4">
               <div className="flex gap-3">
-                <button
+                <PendingButton
                   onClick={() => setModalSelectedRole('investor')}
                   className={`flex-1 py-3 rounded-md font-medium ${modalSelectedRole === 'investor' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}`}
                 >
                   Investor
-                </button>
-                <button
+                </PendingButton>
+                <PendingButton
                   onClick={() => setModalSelectedRole('issuer')}
                   className={`flex-1 py-3 rounded-md font-medium ${modalSelectedRole === 'issuer' ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'}`}
                 >
                   Issuer (SPV)
-                </button>
+                </PendingButton>
               </div>
 
               <div>
@@ -830,13 +876,13 @@ export default function Home() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <button onClick={() => setShowRoleModal(false)} className="text-sm text-slate-600 dark:text-slate-400 hover:underline">Cancel</button>
-                <button
+                <PendingButton onClick={() => setShowRoleModal(false)} className="text-sm text-slate-600 dark:text-slate-400 hover:underline">Cancel</PendingButton>
+                <PendingButton
                   onClick={() => createWalletForRole(modalSelectedRole, modalUserIdInput || pendingUserId || undefined)}
                   className="py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium"
                 >
                   Create Wallet
-                </button>
+                </PendingButton>
               </div>
             </div>
           </div>
@@ -856,9 +902,9 @@ export default function Home() {
         {error && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
             <p className="text-red-800 dark:text-red-200">{error}</p>
-            <button onClick={loadData} className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline">
+            <PendingButton onClick={loadData} className="mt-2 text-sm text-red-600 dark:text-red-400 hover:underline">
               Try again
-            </button>
+            </PendingButton>
           </div>
         )}
 
@@ -884,13 +930,13 @@ export default function Home() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <button
+                    <PendingButton
                       onClick={walletConnected ? undefined : handleConnectWallet}
                       disabled={connectingWallet}
                       className="px-5 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium shadow-md hover:from-blue-700 hover:to-purple-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                     >
                       {walletConnected ? 'Wallet Connected' : (connectingWallet ? 'Connecting...' : 'Connect Wallet')}
-                    </button>
+                    </PendingButton>
                     <Link
                       href="/guide"
                       className="px-5 py-3 rounded-lg border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 bg-white/70 dark:bg-slate-900/60 hover:bg-white dark:hover:bg-slate-900 transition-colors"
@@ -921,7 +967,7 @@ export default function Home() {
               <>
                 {/* Investor Tabs */}
                 <div className="flex gap-4 mb-8">
-                  <button
+                  <PendingButton
                     onClick={() => setInvestorTab('products')}
                     className={`px-6 py-3 rounded-lg font-medium transition-all ${
                       investorTab === 'products'
@@ -930,8 +976,8 @@ export default function Home() {
                     }`}
                   >
                     Investment Products
-                  </button>
-                  <button
+                  </PendingButton>
+                  <PendingButton
                     onClick={() => walletConnected && setInvestorTab('portfolio')}
                     disabled={!walletConnected}
                     className={`px-6 py-3 rounded-lg font-medium transition-all ${
@@ -941,7 +987,7 @@ export default function Home() {
                     } ${!walletConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     My Portfolio {!walletConnected && '🔒'}
-                  </button>
+                  </PendingButton>
                 </div>
 
                 {/* Investor Products Tab */}
@@ -1003,7 +1049,7 @@ export default function Home() {
                             </div>
                           )}
 
-                          <button
+                          <PendingButton
                             onClick={() => {
                               if (!walletConnected) {
                                 alert('Please connect your wallet to invest.');
@@ -1016,7 +1062,7 @@ export default function Home() {
                             className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
                           >
                             {!walletConnected ? 'Connect Wallet to Invest 🔒' : (subscribingStatus[product.id] === 'loading' ? 'Purchasing...' : 'Subscribe Now')}
-                          </button>
+                          </PendingButton>
                           {subscribingStatus[product.id] === 'success' && (
                             <p className="text-sm text-green-700 dark:text-green-300 mt-2">{subscribeMessages[product.id] || 'Purchase complete'}</p>
                           )}
@@ -1143,7 +1189,7 @@ export default function Home() {
                                             placeholder="Amount"
                                             className="w-28 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100"
                                           />
-                                          <button
+                                          <PendingButton
                                             onClick={() => handleGatewayDeposit(blockchain)}
                                             disabled={depositStatus[blockchain] === 'loading'}
                                             className="px-3 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-md hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1153,8 +1199,8 @@ export default function Home() {
                                             ) : (
                                               'Deposit'
                                             )}
-                                          </button>
-                                          <button
+                                          </PendingButton>
+                                          <PendingButton
                                             onClick={() => {
                                               if (actualAddress) {
                                                 navigator.clipboard.writeText(actualAddress);
@@ -1165,7 +1211,7 @@ export default function Home() {
                                             className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                           >
                                             Copy
-                                          </button>
+                                          </PendingButton>
                                         </div>
                                         </div>
                                         <div className="w-full mt-2 text-right">
@@ -1202,13 +1248,13 @@ export default function Home() {
                                   <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">{holding.productName}</h3>
                                   <p className="text-sm text-slate-500 dark:text-slate-400">Product ID: #{holding.productId}</p>
                                 </div>
-                                <button
+                                <PendingButton
                                   onClick={() => handleClaimDividend(holding.productId)}
                                   disabled={(Number(holding.pendingDividend || 0) === 0)}
                                   className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
                                 >
                                   Claim Dividend
-                                </button>
+                                </PendingButton>
                               </div>
                               <div className="grid grid-cols-3 gap-4">
                                 <div>
@@ -1252,7 +1298,7 @@ export default function Home() {
               <>
                 {/* Issuer Tabs */}
                 <div className="flex gap-4 mb-8">
-                  <button
+                  <PendingButton
                     onClick={() => setIssuerTab('my-products')}
                     className={`px-6 py-3 rounded-lg font-medium transition-all ${
                       issuerTab === 'my-products'
@@ -1261,8 +1307,8 @@ export default function Home() {
                     }`}
                   >
                     My Products
-                  </button>
-                  <button
+                  </PendingButton>
+                  <PendingButton
                     onClick={() => setIssuerTab('create')}
                     disabled={!walletConnected || authRole !== 'issuer'}
                     className={`px-6 py-3 rounded-lg font-medium transition-all ${
@@ -1272,8 +1318,8 @@ export default function Home() {
                     } ${(!walletConnected || authRole !== 'issuer') ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Create Product {(!walletConnected || authRole !== 'issuer') && '🔒'}
-                  </button>
-                  <button
+                  </PendingButton>
+                  <PendingButton
                     onClick={() => setIssuerTab('pending')}
                     disabled={!walletConnected || authRole !== 'issuer'}
                     className={`px-6 py-3 rounded-lg font-medium transition-all ${
@@ -1283,7 +1329,7 @@ export default function Home() {
                     } ${(!walletConnected || authRole !== 'issuer') ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Pending Approval {(!walletConnected || authRole !== 'issuer') && '🔒'}
-                  </button>
+                  </PendingButton>
                 </div>
 
                 {/* My Products Tab */}
@@ -1316,7 +1362,7 @@ export default function Home() {
                                 </span>
                               </div>
                               <div className="flex gap-2">
-                                <button
+                                <PendingButton
                                   onClick={() => {
                                     const amount = prompt('Enter dividend amount in USDC:');
                                     if (amount) handleDeclareDividend(product.id, parseFloat(amount));
@@ -1325,22 +1371,22 @@ export default function Home() {
                                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
                                 >
                                   Declare Dividend
-                                </button>
+                                </PendingButton>
                                 {product.active ? (
-                                  <button
+                                  <PendingButton
                                     onClick={() => handleDeactivateProduct(product.id)}
                                     disabled={!walletConnected}
                                     className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
                                   >
                                     Deactivate
-                                  </button>
+                                  </PendingButton>
                                 ) : (
-                                  <button
+                                  <PendingButton
                                     disabled={!walletConnected}
                                     className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
                                   >
                                     Refund Investors
-                                  </button>
+                                  </PendingButton>
                                 )}
                               </div>
                             </div>
@@ -1384,7 +1430,7 @@ export default function Home() {
                           </div>
 
                           <div className="p-6">
-                            <button
+                            <PendingButton
                               onClick={() => {
                                 const amount = prompt('Enter amount to withdraw in USDC:');
                                 if (amount) handleWithdrawFunds(product.id, parseFloat(amount));
@@ -1393,7 +1439,7 @@ export default function Home() {
                               className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-all"
                             >
                               Withdraw Subscription Funds
-                            </button>
+                            </PendingButton>
                           </div>
                         </div>
                       ))}
@@ -1480,7 +1526,13 @@ export default function Home() {
                             />
                           </div>
 
-                          <button type="submit" className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium transition-all text-lg">Submit for Approval</button>
+                          <PendingButton
+                            type="submit"
+                            pending={creatingProduct}
+                            className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-lg font-medium transition-all text-lg"
+                          >
+                            Submit for Approval
+                          </PendingButton>
 
                           <p className="text-sm text-slate-500 dark:text-slate-400 text-center">Your product will be reviewed by the admin before being listed</p>
                         </form>
@@ -1515,7 +1567,7 @@ export default function Home() {
                               <span className="font-semibold text-slate-900 dark:text-slate-100">{product.category || 'General'}</span>
                             </div>
                           </div>
-                          <button className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors">Cancel</button>
+                          <PendingButton className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium transition-colors">Cancel</PendingButton>
                         </div>
                       ))}
                       {pendingProducts.length === 0 && (<div className="text-center py-12 text-slate-500 dark:text-slate-400">No pending products</div>)}
