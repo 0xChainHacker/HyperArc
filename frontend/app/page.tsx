@@ -1448,8 +1448,11 @@ export default function Home() {
                             >
                               <option>Real Estate</option>
                               <option>Venture Capital</option>
-                              <option>Energy</option>
+                              <option>Renewable Energy</option>
                               <option>Infrastructure</option>
+                              <option>Private Credit</option>
+                              <option>Technology</option>
+                              <option>Other</option>
                             </select>
                           </div>
 
