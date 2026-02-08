@@ -101,6 +101,53 @@ export default function GuidePage() {
             </ul>
           </div>
         </section>
+
+        <section className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-6 md:p-8 shadow-xl">
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-600 dark:text-blue-300">Ideal Fundraising Types</p>
+            <h2 className="text-3xl font-semibold text-slate-900 dark:text-white">Dividend-ready products for HyperArc</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-300 max-w-3xl">
+              HyperArc is best for primary issuance of products with predictable, recurring cashflows. Settling dividends in USDC on Circle Arc makes yield distribution simple and auditable.
+            </p>
+          </div>
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              {
+                title: 'Hospitality & Logistics Yield Co.',
+                desc: 'Long-term leases on hotels and warehouses with visible rent rolls that fund monthly USDC dividends.',
+              },
+              {
+                title: 'Cross-Border Supply Chain Finance',
+                desc: 'Invoice-backed funding structures where trade receipts can be tokenized for fast settlement.',
+              },
+              {
+                title: 'Energy Transition Yield Portfolio',
+                desc: 'Portfolio of industrial-scale solar and storage with PPAs that deliver steady cash inflows.',
+              },
+              {
+                title: 'Regulated Private Credit Notes',
+                desc: 'Asset-backed working capital loans to vetted borrowers, converting interest receipts into dividends.',
+              },
+              {
+                title: 'Subscription Media & Royalty Fund',
+                desc: 'Recurring streaming or IP royalties that provide predictable payouts to token holders.',
+              },
+              {
+                title: 'Specialty Leasing Vehicle',
+                desc: 'Aircraft, healthcare, or rail leasing platforms with contracted payments and escrowed USDC.',
+              },
+            ].map((item) => (
+              <div key={item.title} className="rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-5">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{item.title}</h3>
+                <p className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Institutional grade</p>
+                <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">
+            Need something different? Use the “Other” category and document how the asset behaves, its compliance boundaries, and why USDC settlement improves the structure.
+          </p>
+        </section>
       </main>
     </div>
   );
