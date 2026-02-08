@@ -22,6 +22,31 @@ This is a settlement infrastructure, not a trading platform.
 
 ---
 
+## Deployed Contracts
+
+- **[EconomicInterestLedger](https://testnet.arcscan.app/address/0x857AC799F4AaD17E5AFe4DCf41561191F219Fc87)**: `0x857AC799F4AaD17E5AFe4DCf41561191F219Fc87`
+- [DividendDistributor](https://testnet.arcscan.app/address/0x81e9367719f85e701527e3e406fdde35d5d1d48d): `0x81e9367719f85e701527e3e406fdde35d5d1d48d`
+
+---
+
+## System Overview
+
+![System Overview](frontend/Doc/Page-6.png)
+
+## Subscription Flow
+
+![Subscription flow](frontend/Doc/Page-8.png)
+
+## Dividend Distribution Flow
+
+![Dividend Distribution Flow](frontend/Doc/Page-9.png)
+
+## Architecture Overview
+
+![Architecture Overview](frontend/Doc/Page-10.png)
+
+---
+
 ## Technical Architecture
 
 ```
@@ -37,13 +62,6 @@ Smart Contracts (Arc Layer-1)
       ↓
 Arc Layer-1 (USDC Settlement)
 ```
-
----
-
-## Deployed Contracts
-
-- **[EconomicInterestLedger](https://testnet.arcscan.app/address/0x857AC799F4AaD17E5AFe4DCf41561191F219Fc87)**: `0x857AC799F4AaD17E5AFe4DCf41561191F219Fc87`
-- [DividendDistributor](https://testnet.arcscan.app/address/0x81e9367719f85e701527e3e406fdde35d5d1d48d): `0x81e9367719f85e701527e3e406fdde35d5d1d48d`
 
 ---
 
